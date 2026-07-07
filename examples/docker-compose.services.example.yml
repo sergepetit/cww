@@ -1,0 +1,97 @@
+# Example: Project-specific services and configuration
+# Place this file at <your-project>/.cww/docker-compose.services.yml
+#
+# These services will be merged with the base docker-compose when running cww create
+#
+# See also:
+#   - maven-settings.xml.example - Maven/Nexus proxy configuration
+#   - sbt-repositories.example   - sbt repository configuration
+#   - sbt-credentials.example    - sbt authentication
+#   - npmrc.example              - npm registry configuration
+
+services:
+  # ==========================================================================
+  # DEPENDENCY CACHE MOUNTS (opt-in)
+  #
+  # By default, no caches are shared with the container. To share one, first
+  # provision it with `cww cache <preset>` (creates ~/.cww/cache/<...> and sets
+  # container-writable ownership), then uncomment the matching line below. Do
+  # NOT bind-mount your own ~/.npm / ~/.m2 directly — the in-container
+  # `developer` user can't write a host-owned dir. See the guide's "Dependency
+  # caches" section.
+  # ==========================================================================
+  coder:
+    volumes:
+      # ---------- JVM Caches ----------  (cww cache m2 / ivy2 / sbt / coursier)
+      # - ${HOME}/.cww/cache/m2/repository:/home/developer/.m2/repository
+      # - ${HOME}/.cww/cache/ivy2/cache:/home/developer/.ivy2/cache
+      # - ${HOME}/.cww/cache/sbt/boot:/home/developer/.sbt/boot
+      # - ${HOME}/.cww/cache/coursier:/home/developer/.cache/coursier
+
+      # ---------- Node.js Caches ----------  (cww cache npm)
+      # - ${HOME}/.cww/cache/npm/_cacache:/home/developer/.npm/_cacache
+
+      # ---------- Configuration Files ----------
+      # Maven settings (for Nexus/Artifactory proxy)
+      # - ./.cww/maven-settings.xml:/home/developer/.m2/settings.xml:ro
+      # sbt repositories and credentials
+      # - ./.cww/sbt-repositories:/home/developer/.sbt/repositories:ro
+      # - ./.cww/sbt-credentials:/home/developer/.sbt/.credentials:ro
+      # npm configuration (for private registry)
+      # - ./.cww/npmrc:/home/developer/.npmrc:ro
+      # Gradle properties (for proxy/auth)
+      # - ./.cww/gradle.properties:/home/developer/.gradle/gradle.properties:ro
+
+    # Environment variables for credentials (safer than hardcoding in config files)
+    # environment:
+    #   - NEXUS_USERNAME=your-username
+    #   - NEXUS_PASSWORD=your-password
+    #   - NPM_TOKEN=your-npm-token
+
+  # ==========================================================================
+  # ADDITIONAL SERVICES
+  #
+  # NOTE: Services use ephemeral storage (no persistent volumes) and no host
+  # port bindings by default. This avoids conflicts when running multiple
+  # workspaces in parallel.
+  #
+  # Services are accessible from the coder container by hostname (e.g.,
+  # postgres:5432, redis:6379).
+  #
+  # To reach a service from the host, publish its port using the
+  # CONTAINER-PORT-ONLY form so parallel workspaces never collide:
+  #
+  #   ports:
+  #     - "5174"        # container port only — NOT "5174:5174"
+  #
+  # Docker then assigns a free HOST port per workspace (see it in `cww list`),
+  # and `cww tunnel-command <workspace>` maps it back to a stable localhost:5174
+  # from another machine. Pinning "5174:5174" instead forces a fixed host port,
+  # so a second parallel workspace fails with "port is already allocated".
+  #
+  # Data is lost when the container stops - inspect it while running:
+  #   docker exec -it <container> psql -U dev -d myapp_dev
+  # ==========================================================================
+
+  # Web app / dev server — publish its port so you can open it in a browser.
+  # The bare "5174" (no host side) is what keeps parallel workspaces
+  # conflict-free: Docker publishes it on a random free high host port (shown
+  # in `cww list` as e.g. 5174->49153), and `cww tunnel-command` maps it back
+  # to a stable localhost:5174 — from another machine or the Docker host itself.
+  # web:
+  #   image: your-app
+  #   ports:
+  #     - "5174"
+
+  # PostgreSQL database (ephemeral - data lost on container stop)
+  # postgres:
+  #   image: postgres:16
+  #   environment:
+  #     POSTGRES_DB: myapp_dev
+  #     POSTGRES_USER: dev
+  #     POSTGRES_PASSWORD: dev
+
+  # Redis cache (ephemeral)
+  # redis:
+  #   image: redis:7-alpine
+

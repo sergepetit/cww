@@ -1,0 +1,14 @@
+# cww: Chrome DevTools MCP server attached to the workspace's built-in
+# browser (CDP on 127.0.0.1:9222). The entrypoint appends this to
+# ~/.vibe/config.toml on boot unless CWW_BROWSER=off.
+#
+# CAVEAT: Vibe reads exactly ONE config.toml — the trusted project's
+# .vibe/config.toml if the repo commits one, otherwise ~/.vibe/config.toml
+# (no merging). A repo that commits .vibe/config.toml therefore hides this
+# entry; copy the block below into that file to keep browser access.
+
+[[mcp_servers]]
+name = "chrome-devtools"
+transport = "stdio"
+command = "chrome-devtools-mcp"
+args = ["--browser-url=http://127.0.0.1:9222", "--usage-statistics=false"]

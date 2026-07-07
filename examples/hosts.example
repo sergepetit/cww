@@ -1,0 +1,16 @@
+# cww extra hosts — copy to ~/.cww/hosts (applies to all tasks) and/or to
+# <repo>/.cww/hosts (that project only). Both are read if present.
+#
+# Adds entries to the task container's /etc/hosts (compose extra_hosts), so the
+# agent can reach internal hosts the container's DNS can't resolve — e.g. an
+# on-prem Forgejo/Gitea, a private package registry, or a service by name.
+#
+# One entry per line:  <hostname> <ip>
+# Blank lines and lines starting with # are ignored.
+#
+# Note: this only fixes NAME RESOLUTION. If the container can resolve a host but
+# still can't connect (e.g. Docker Desktop on macOS can't route to LAN IPs),
+# extra_hosts won't help — that's a network-routing limitation of the host.
+
+# forgejo.internal   192.168.1.11
+# nexus.corp.example 10.0.0.20

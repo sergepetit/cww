@@ -1,0 +1,42 @@
+# Example: Gradle properties for container use
+# Place this file at <your-project>/.cww/gradle.properties
+#
+# Then add to your .cww/docker-compose.services.yml:
+#
+# services:
+#   coder:
+#     volumes:
+#       - ./.cww/gradle.properties:/home/developer/.gradle/gradle.properties:ro
+#
+# SECURITY NOTE: Do not commit this file with real credentials!
+
+# =============================================================================
+# NEXUS/ARTIFACTORY PROXY
+# =============================================================================
+
+# Repository URL (used in build.gradle for repository configuration)
+nexusUrl=https://nexus.example.com/repository/maven-public/
+
+# Credentials (reference these in build.gradle as project properties)
+nexusUsername=your-username
+nexusPassword=your-password
+
+# Or use environment variables in build.gradle:
+# username = System.getenv("NEXUS_USERNAME") ?: project.findProperty("nexusUsername")
+# password = System.getenv("NEXUS_PASSWORD") ?: project.findProperty("nexusPassword")
+
+# =============================================================================
+# GRADLE CONFIGURATION
+# =============================================================================
+
+# Use parallel builds
+org.gradle.parallel=true
+
+# Enable build cache
+org.gradle.caching=true
+
+# JVM memory settings
+org.gradle.jvmargs=-Xmx2g -XX:+HeapDumpOnOutOfMemoryError
+
+# Daemon settings (container typically runs single build, so disable)
+org.gradle.daemon=false

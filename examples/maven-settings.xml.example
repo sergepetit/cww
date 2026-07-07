@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Example: Maven settings.xml for container use
+     Place this file at <your-project>/.cww/maven-settings.xml
+
+     Then add to your .cww/docker-compose.services.yml:
+
+     services:
+       coder:
+         volumes:
+           - ./.cww/maven-settings.xml:/home/developer/.m2/settings.xml:ro
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+
+  <!-- Mirror all requests through a Nexus proxy -->
+  <mirrors>
+    <mirror>
+      <id>nexus</id>
+      <mirrorOf>*</mirrorOf>
+      <url>https://nexus.example.com/repository/maven-public/</url>
+    </mirror>
+  </mirrors>
+
+  <!-- Server credentials for the proxy -->
+  <servers>
+    <server>
+      <id>nexus</id>
+      <!-- Option 1: Use environment variables (recommended) -->
+      <username>${env.NEXUS_USERNAME}</username>
+      <password>${env.NEXUS_PASSWORD}</password>
+
+      <!-- Option 2: Hardcode credentials (less secure, but works for local dev)
+      <username>your-username</username>
+      <password>your-password</password>
+      -->
+    </server>
+
+    <!-- For deploying snapshots -->
+    <server>
+      <id>nexus-snapshots</id>
+      <username>${env.NEXUS_USERNAME}</username>
+      <password>${env.NEXUS_PASSWORD}</password>
+    </server>
+
+    <!-- For deploying releases -->
+    <server>
+      <id>nexus-releases</id>
+      <username>${env.NEXUS_USERNAME}</username>
+      <password>${env.NEXUS_PASSWORD}</password>
+    </server>
+  </servers>
+
+  <profiles>
+    <profile>
+      <id>nexus</id>
+      <repositories>
+        <repository>
+          <id>central</id>
+          <url>https://nexus.example.com/repository/maven-public/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>central</id>
+          <url>https://nexus.example.com/repository/maven-public/</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>true</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+
+  <activeProfiles>
+    <activeProfile>nexus</activeProfile>
+  </activeProfiles>
+
+</settings>

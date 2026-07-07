@@ -1,0 +1,36 @@
+# Example: .npmrc for container use
+# Place this file at <your-project>/.cww/npmrc
+#
+# Then add to your .cww/docker-compose.services.yml:
+#
+# services:
+#   coder:
+#     volumes:
+#       - ./.cww/npmrc:/home/developer/.npmrc:ro
+#
+# SECURITY NOTE: Do not commit this file with real auth tokens!
+# Consider using environment variables instead.
+
+# Use a private registry (Nexus, Artifactory, Verdaccio, etc.)
+registry=https://nexus.example.com/repository/npm-group/
+
+# Scoped packages from private registry
+@mycompany:registry=https://nexus.example.com/repository/npm-private/
+
+# Authentication for private registry
+# Option 1: Auth token (preferred)
+//nexus.example.com/repository/npm-group/:_authToken=${NPM_TOKEN}
+//nexus.example.com/repository/npm-private/:_authToken=${NPM_TOKEN}
+
+# Option 2: Basic auth (base64 encoded username:password)
+# //nexus.example.com/repository/npm-group/:_auth=dXNlcm5hbWU6cGFzc3dvcmQ=
+
+# Always authenticate (even for GET requests)
+//nexus.example.com/repository/npm-group/:always-auth=true
+
+# For GitHub Packages
+# @myorg:registry=https://npm.pkg.github.com
+# //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+
+# Disable strict SSL if using self-signed certs (not recommended for production)
+# strict-ssl=false

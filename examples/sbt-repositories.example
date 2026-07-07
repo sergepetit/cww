@@ -1,0 +1,34 @@
+# Example: sbt repositories file for container use
+# Place this file at <your-project>/.cww/sbt-repositories
+#
+# Then add to your .cww/docker-compose.services.yml:
+#
+# services:
+#   coder:
+#     volumes:
+#       - ./.cww/sbt-repositories:/home/developer/.sbt/repositories:ro
+#
+# Format: [type]name: url
+# Types: local, maven-local, maven-central, ivy (default)
+
+[repositories]
+  # Local Maven cache (already mounted by cww)
+  local
+
+  # Your Nexus/Artifactory proxy - all requests go through here
+  nexus-proxy: https://nexus.example.com/repository/maven-public/
+
+  # Or use Artifactory
+  # artifactory: https://artifactory.example.com/artifactory/sbt-release/
+
+  # If you need Maven Central directly (bypassing proxy)
+  # maven-central
+
+  # Private Ivy repository
+  # my-ivy-repo: https://repo.example.com/ivy/, [organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext]
+
+  # Typesafe/Lightbend releases (for Play Framework, Akka, etc.)
+  # typesafe-releases: https://repo.typesafe.com/typesafe/releases/
+
+  # Sonatype snapshots (for pre-release dependencies)
+  # sonatype-snapshots: https://oss.sonatype.org/content/repositories/snapshots/

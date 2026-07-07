@@ -1,0 +1,137 @@
+#!/bin/bash
+# cww - Coder Workspace Workflow CLI
+# Main entry point that delegates to sub-commands
+
+set -e
+
+# Resolve symlinks to get the actual script directory
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+VERSION="0.1.0"
+
+usage() {
+    cat << EOF
+cww - Coder Workspace Workflow (pronounced céwéwé, /se.ve.ve/)
+
+Create isolated, disposable workspaces — each its own container that clones your
+repo and runs the app's services via Docker, with a coding agent inside (Claude
+Code or Mistral Vibe). The workspace is the unit; cww is git-flow agnostic —
+the git workflow inside is yours.
+
+Usage: cww <command> [arguments]
+
+Commands:
+  create [path] <name>    Create a workspace (clones the repo, brings up services)
+  teardown [name]         Remove a workspace's containers, volumes, network, and metadata
+  attach [name]           Re-attach to a workspace's agent session
+  shell [name]            Open a plain login shell in a workspace (not the agent)
+  start [name]            Resume a stopped workspace (inverse of stop)
+  stop [name]             Stop a workspace (its filesystem is preserved)
+  reset [name]            Re-run the project's .cww/reset.sh (reset/reseed data)
+  list                    List all workspaces
+  tunnel-command [name]   Print the ssh command to reach a workspace's ports
+  cache <preset|name>     Provision a shared dependency-cache dir (npm, m2, …)
+  build [agent|all]       Build/rebuild a per-agent Docker image (claude | vibe)
+  help                    Show this help message
+
+Run 'cww <command> --help' for more information on a command.
+
+Examples:
+  cww create <workspace-name>                 # New workspace from the current repo
+  cww create <workspace-name> --branch <ref>  # ... starting on a specific branch
+  cww create /path/to/repo <workspace-name>   # ... for a specific repo
+  cww attach <workspace-name>                 # Re-attach to the agent
+  cww shell <workspace-name>                  # Get a shell running in the workspace
+  cww list                                    # Show all workspaces
+  cww teardown <workspace-name>               # Remove it when done
+
+Version: $VERSION
+EOF
+}
+
+# Handle no arguments
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 0
+fi
+
+# Route to sub-command
+case "$1" in
+    create)
+        shift
+        exec "$SCRIPT_DIR/create-task.sh" "$@"
+        ;;
+    shell|sh)
+        shift
+        exec "$SCRIPT_DIR/shell-task.sh" "$@"
+        ;;
+    attach)
+        shift
+        exec "$SCRIPT_DIR/attach-task.sh" "$@"
+        ;;
+    start)
+        shift
+        exec "$SCRIPT_DIR/start-task.sh" "$@"
+        ;;
+    stop)
+        shift
+        exec "$SCRIPT_DIR/stop-task.sh" "$@"
+        ;;
+    reset)
+        shift
+        exec "$SCRIPT_DIR/reset-task.sh" "$@"
+        ;;
+    teardown|down)
+        shift
+        exec "$SCRIPT_DIR/teardown-task.sh" "$@"
+        ;;
+    list|ls)
+        shift
+        exec "$SCRIPT_DIR/list-tasks.sh" "$@"
+        ;;
+    tunnel-command|tunnel)
+        shift
+        exec "$SCRIPT_DIR/tunnel-command.sh" "$@"
+        ;;
+    cache)
+        shift
+        exec "$SCRIPT_DIR/cache-task.sh" "$@"
+        ;;
+    build)
+        shift
+        source "$SCRIPT_DIR/lib/common.sh"
+        source "$SCRIPT_DIR/lib/agents.sh"
+        # No argument -> the configured default agent (CWW_AGENT in ~/.cww/env),
+        # falling back to claude. 'all' builds every agent's image.
+        if [[ -z "${1:-}" && -f "$HOME/.cww/env" ]]; then
+            # shellcheck disable=SC1091
+            source "$HOME/.cww/env"
+        fi
+        TARGET="${1:-${CWW_AGENT:-claude}}"
+        if [[ "$TARGET" == "all" ]]; then
+            for agent in $CWW_AGENTS; do
+                build_agent_image "$agent"
+            done
+        else
+            validate_agent "$TARGET"
+            build_agent_image "$TARGET"
+        fi
+        ;;
+    version|--version|-v)
+        echo "cww version $VERSION"
+        ;;
+    help|--help|-h)
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1" >&2
+        echo "Run 'cww help' for usage." >&2
+        exit 1
+        ;;
+esac

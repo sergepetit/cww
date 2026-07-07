@@ -1,0 +1,18 @@
+# Docker build artifacts
+docker/tmux.conf
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Tool artifacts
+.playwright-mcp/
