@@ -116,6 +116,10 @@ cp "$SOURCE_DIR/templates/"* "$INSTALL_DIR/templates/"
 mkdir -p "$INSTALL_DIR/examples"
 cp "$SOURCE_DIR/examples/"* "$INSTALL_DIR/examples/"
 
+# Copy shell completions
+mkdir -p "$INSTALL_DIR/completions"
+cp "$SOURCE_DIR/completions/"* "$INSTALL_DIR/completions/"
+
 # Make scripts executable
 chmod +x "$INSTALL_DIR/docker/entrypoint.sh"
 chmod +x "$INSTALL_DIR/docker/cww-browser.sh"
@@ -187,6 +191,60 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
         warn "Open a new shell (or: source $RC_FILE) to pick up cww."
     fi
 fi
+
+# Shell completions (bash + zsh). Files are always installed; rc wiring only
+# for the user's login shell, mirroring the PATH handling above.
+echo ""
+info "Installing shell completions..."
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+BASH_COMPLETION_FILE="$DATA_HOME/bash-completion/completions/cww"
+mkdir -p "$(dirname "$BASH_COMPLETION_FILE")"
+cp "$SOURCE_DIR/completions/cww.bash" "$BASH_COMPLETION_FILE"
+
+ZSH_COMPLETION_DIR="$DATA_HOME/zsh/site-functions"
+mkdir -p "$ZSH_COMPLETION_DIR"
+cp "$SOURCE_DIR/completions/_cww" "$ZSH_COMPLETION_DIR/_cww"
+
+COMPLETION_MARKER="# Added by cww install.sh (shell completion)"
+case "${SHELL:-}" in
+    */zsh)
+        # Works whichever side of compinit this lands on: if compinit already
+        # ran, compdef exists and registers _cww now; if it runs later, it
+        # finds _cww on the extended fpath by itself.
+        if grep -Fq "$COMPLETION_MARKER" "$HOME/.zshrc" 2>/dev/null; then
+            success "zsh completion installed (already registered in ~/.zshrc)"
+        else
+            {
+                echo ""
+                echo "$COMPLETION_MARKER"
+                echo "fpath=(\"$ZSH_COMPLETION_DIR\" \$fpath)"
+                echo "autoload -Uz _cww"
+                echo '(( $+functions[compdef] )) && compdef _cww cww'
+            } >> "$HOME/.zshrc"
+            success "zsh completion registered in ~/.zshrc"
+        fi
+        warn "Open a new shell (or: source ~/.zshrc) to pick up completions."
+        ;;
+    */bash)
+        # bash-completion >= 2.9 auto-loads the file; source it explicitly too
+        # so completion also works without the bash-completion package.
+        if grep -Fq "$COMPLETION_MARKER" "$HOME/.bashrc" 2>/dev/null; then
+            success "bash completion installed (already registered in ~/.bashrc)"
+        else
+            {
+                echo ""
+                echo "$COMPLETION_MARKER"
+                echo "[ -f \"$BASH_COMPLETION_FILE\" ] && source \"$BASH_COMPLETION_FILE\""
+            } >> "$HOME/.bashrc"
+            success "bash completion registered in ~/.bashrc"
+        fi
+        warn "Open a new shell (or: source ~/.bashrc) to pick up completions."
+        ;;
+    *)
+        success "Completions installed for bash and zsh (login shell '${SHELL:-unknown}' not wired automatically)"
+        ;;
+esac
 
 # Seed the per-user env file (git credential) from the template, without
 # clobbering an existing one.

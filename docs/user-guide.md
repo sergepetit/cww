@@ -33,6 +33,7 @@ The installer will:
 1. Copy files to `~/.local/share/coder-workspace-workflow/`
 2. Create a launcher at `~/.local/bin/cww`
 3. Build the Docker image
+4. Set up tab completion for bash and zsh (commands, flags, and workspace names), registering it in your login shell's rc file
 
 Make sure `~/.local/bin` is in your PATH.
 

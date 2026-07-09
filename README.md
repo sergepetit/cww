@@ -46,6 +46,8 @@ chmod 600 ~/.cww/env
 
 For Mistral Vibe, set `MISTRAL_API_KEY=...` instead (see [Choosing an agent](#choosing-an-agent)).
 
+The installer also sets up tab completion (bash and zsh) for commands, flags, and workspace names — open a new shell to pick it up.
+
 Full setup notes — self-hosted git hosts, token scoping, per-project overrides, and defining your app's services (Postgres, Redis, …) via `.cww/docker-compose.services.yml` — are in the User Guide: [authentication](docs/user-guide.md#authentication-setup) and [project services](docs/user-guide.md#project-specific-services).
 
 ## Quick Start

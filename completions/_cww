@@ -1,0 +1,88 @@
+#compdef cww
+# zsh completion for cww — installed by install.sh.
+#
+# Commands and flags are hardcoded here (they ship with the CLI, so they can't
+# drift from the installed version); workspace names are dynamic, fetched via
+# the hidden 'cww __complete workspaces' (fast: reads session files, no docker).
+
+_cww_workspaces() {
+  local -a names
+  names=(${(f)"$(cww __complete workspaces 2>/dev/null)"})
+  (( ${#names} )) && _describe -t workspaces 'workspace' names
+}
+
+_cww() {
+  local -a commands=(
+    'create:Create a workspace (clones the repo, brings up services)'
+    "teardown:Remove a workspace's containers, volumes, network, and metadata"
+    "attach:Re-attach to a workspace's agent session"
+    'shell:Open a plain login shell in a workspace (not the agent)'
+    'start:Resume a stopped workspace (inverse of stop)'
+    'stop:Stop a workspace (its filesystem is preserved)'
+    "reset:Re-run the project's .cww/reset.sh (reset/reseed data)"
+    'list:List all workspaces'
+    "tunnel-command:Print the ssh command to reach a workspace's ports"
+    'cache:Provision a shared dependency-cache dir (npm, m2, ...)'
+    'build:Build/rebuild a per-agent Docker image (claude | vibe)'
+    'help:Show the help message'
+    'version:Show the version'
+  )
+  local -a help_opt=('(-h --help)'{-h,--help}'[show help]')
+
+  local curcontext="$curcontext" state
+  _arguments -C \
+    '1:command:->command' \
+    '*::arg:->args' && return
+
+  case $state in
+    command)
+      _describe -t commands 'cww command' commands
+      ;;
+    args)
+      case $words[1] in
+        create)
+          # --branch/--ref values are free-form: branch completion is
+          # deliberately not offered (it would mean querying git per <TAB>).
+          _arguments \
+            '--branch[branch to check out inside the workspace]:ref:' \
+            '--ref[alias for --branch]:ref:' \
+            '--agent[coding agent to run in the workspace]:agent:(claude vibe)' \
+            '--no-attach[do not attach to tmux after creating]' \
+            $help_opt \
+            '1:project path or new workspace name:_directories' \
+            '2:new workspace name:'
+          ;;
+        teardown|down)
+          _arguments \
+            '(-y --yes)'{-y,--yes}'[skip the confirmation prompt]' \
+            $help_opt \
+            '1:workspace:_cww_workspaces'
+          ;;
+        attach|shell|sh|start|stop|reset)
+          _arguments $help_opt '1:workspace:_cww_workspaces'
+          ;;
+        tunnel-command|tunnel)
+          _arguments \
+            '--host[SSH target to connect to]:target:' \
+            $help_opt \
+            '1:workspace:_cww_workspaces'
+          ;;
+        list|ls)
+          _arguments '--json[output as JSON]' $help_opt
+          ;;
+        cache)
+          _arguments \
+            '--from[seed the cache from an existing directory]:directory:_directories' \
+            $help_opt \
+            '1:preset or custom cache name:(npm m2 ivy2 sbt coursier gradle)' \
+            '2:container path (custom caches only):'
+          ;;
+        build)
+          _arguments $help_opt '1:agent:(claude vibe all)'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_cww "$@"

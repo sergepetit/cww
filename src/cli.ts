@@ -4,6 +4,7 @@
 
 import { die } from "./lib/ui";
 import { runAttach } from "./commands/attach";
+import { runComplete } from "./commands/complete";
 import { runBuild } from "./commands/build";
 import { runCache } from "./commands/cache";
 import { runCreate } from "./commands/create";
@@ -112,6 +113,10 @@ try {
     case "tunnel-command":
     case "tunnel":
       await runTunnelCommand(rest);
+      break;
+    // Hidden: feeds the shell completion scripts (completions/); not in USAGE.
+    case "__complete":
+      runComplete(rest);
       break;
     case "version":
     case "--version":
