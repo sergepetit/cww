@@ -5,7 +5,7 @@ services:
   coder:
     image: {{CWW_IMAGE}}
     container_name: {{CONTAINER_NAME}}
-    hostname: {{CONTAINER_NAME}}
+    hostname: {{CONTAINER_HOSTNAME}}
     stdin_open: true
     tty: true
     working_dir: /workspace

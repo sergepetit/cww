@@ -31,12 +31,12 @@ cd cww
 
 The installer will:
 1. Copy files to `~/.local/share/coder-workspace-workflow/`
-2. Create a symlink at `~/.local/bin/cww`
+2. Create a launcher at `~/.local/bin/cww`
 3. Build the Docker image
 
 Make sure `~/.local/bin` is in your PATH.
 
-**Prerequisites:** Docker, Git, jq (for JSON parsing), Bash 4+.
+**Prerequisites:** Docker, Git, [Bun](https://bun.sh) (the installer offers to install it if missing).
 
 ### Rootless Docker (recommended)
 
@@ -357,7 +357,7 @@ Because the tunnel's local side is the stable container port, you keep **one** b
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CWW_INSTALL_DIR` | `~/.local/share/coder-workspace-workflow` | Installation directory |
-| `CWW_BIN_DIR` | `~/.local/bin` | Binary symlink directory |
+| `CWW_BIN_DIR` | `~/.local/bin` | Launcher directory |
 | `CWW_BROWSER` | `on` | [Built-in headful browser](#built-in-headful-browser) for new workspaces; `off`/`0`/`false`/`no` disables (set in `~/.cww/env` or `<repo>/.cww/env`) |
 | `CWW_BROWSER_RESOLUTION` | `1920x1080` | Virtual display size of the built-in browser (`<width>x<height>`) |
 

@@ -1,6 +1,9 @@
 # Docker build artifacts
 docker/tmux.conf
 
+# Bun / TypeScript
+node_modules/
+
 # macOS
 .DS_Store
 

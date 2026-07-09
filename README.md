@@ -15,15 +15,15 @@ Each workspace gets its own clone of your repo, wired into its own Docker Compos
 
 **Git inside the workspace is yours** — branch, rebase, and push however your team works; cww imposes no workflow.
 
-**Nothing new to trust or learn.** Under the hood cww is deliberately boring: a small, readable Bash codebase driving plain Docker, Compose, and SSH — no daemon, no vendor account, no new runtime. If you can debug `docker` and `ssh`, you can debug cww.
+**Nothing new to trust or learn.** Under the hood cww is deliberately boring: a small, readable TypeScript codebase (running on [Bun](https://bun.sh), zero npm dependencies) driving plain Docker, Compose, and SSH — no daemon, no vendor account. If you can debug `docker` and `ssh`, you can debug cww.
 
 ## Make it yours
 
-cww is meant to be cloned or forked, not consumed as a black box. Before adopting it, review what's here — scripts, Dockerfile, compose templates, docs — decide whether it fits your needs and your security requirements, and adapt anything that doesn't (bake your toolchain into the image, change the defaults, strip what you don't use). The [MIT license](LICENSE) lets you modify and redistribute freely; per that same license, cww is provided **as-is, with no warranty of any kind** — you run it at your own risk. Where the docs describe third-party services (Anthropic's auth and billing, git hosts, Docker), they reflect our understanding when written; verify against those services' own documentation.
+cww is meant to be cloned or forked, not consumed as a black box. Before adopting it, review what's here — source, Dockerfile, compose templates, docs — decide whether it fits your needs and your security requirements, and adapt anything that doesn't (bake your toolchain into the image, change the defaults, strip what you don't use). The [MIT license](LICENSE) lets you modify and redistribute freely; per that same license, cww is provided **as-is, with no warranty of any kind** — you run it at your own risk. Where the docs describe third-party services (Anthropic's auth and billing, git hosts, Docker), they reflect our understanding when written; verify against those services' own documentation.
 
 ## Install
 
-Needs Docker, Git, jq, and Bash 4+. On Linux, [rootless Docker](docs/user-guide.md#rootless-docker-recommended) is recommended — it keeps the unattended, permission-skipping agent behind an unprivileged host user.
+Needs Docker, Git, and [Bun](https://bun.sh) (the installer offers to set it up if missing). On Linux, [rootless Docker](docs/user-guide.md#rootless-docker-recommended) is recommended — it keeps the unattended, permission-skipping agent behind an unprivileged host user.
 
 ```bash
 git clone https://github.com/sergepetit/cww.git
