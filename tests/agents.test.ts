@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   agentBuildPlan,
@@ -7,9 +8,11 @@ import {
   agentLabel,
   CWW_AGENTS,
   getCwwDir,
+  personalAssetPlan,
   resolveAgent,
   validateAgent,
 } from "../src/agents/registry";
+import { PERSONAL_ASSET_KINDS } from "../src/agents/types";
 
 describe("CWW_AGENTS", () => {
   test("lists the registered agents in registration order", () => {
@@ -63,6 +66,60 @@ describe("agentLabel / agentImage", () => {
   test("each agent gets its own image tag", () => {
     expect(agentImage("claude")).toBe("coder-workspace-workflow:claude");
     expect(agentImage("vibe")).toBe("coder-workspace-workflow:vibe");
+  });
+});
+
+describe("personalAssetPlan", () => {
+  // A throwaway project dir carrying the given .cww/<kind> subfolders.
+  function projectWith(...kinds: string[]): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+    for (const kind of kinds) {
+      fs.mkdirSync(path.join(dir, ".cww", kind), { recursive: true });
+    }
+    return dir;
+  }
+
+  test("claude consumes the whole triad", () => {
+    const dir = projectWith("skills", "commands", "agents");
+    expect(personalAssetPlan(dir, "claude")).toEqual({
+      copies: [
+        { kind: "skills", src: path.join(dir, ".cww", "skills"), dest: "/home/developer/.claude/skills" },
+        { kind: "commands", src: path.join(dir, ".cww", "commands"), dest: "/home/developer/.claude/commands" },
+        { kind: "agents", src: path.join(dir, ".cww", "agents"), dest: "/home/developer/.claude/agents" },
+      ],
+      skipped: [],
+    });
+  });
+
+  test("vibe takes skills (portable format) and skips the Claude-only kinds", () => {
+    const dir = projectWith("skills", "commands", "agents");
+    expect(personalAssetPlan(dir, "vibe")).toEqual({
+      copies: [{ kind: "skills", src: path.join(dir, ".cww", "skills"), dest: "/home/developer/.vibe/skills" }],
+      skipped: ["commands", "agents"],
+    });
+  });
+
+  test("a skills-only project skips nothing for vibe", () => {
+    const dir = projectWith("skills");
+    const plan = personalAssetPlan(dir, "vibe");
+    expect(plan.copies.map((c) => c.kind)).toEqual(["skills"]);
+    expect(plan.skipped).toEqual([]);
+  });
+
+  test("no .cww/ means an empty plan for every agent", () => {
+    const dir = projectWith();
+    for (const agent of CWW_AGENTS) {
+      expect(personalAssetPlan(dir, agent)).toEqual({ copies: [], skipped: [] });
+    }
+  });
+
+  test("every mapped destination is an absolute path in the container home", () => {
+    const dir = projectWith(...PERSONAL_ASSET_KINDS);
+    for (const agent of CWW_AGENTS) {
+      for (const { dest } of personalAssetPlan(dir, agent).copies) {
+        expect(dest).toStartWith("/home/developer/");
+      }
+    }
   });
 });
 

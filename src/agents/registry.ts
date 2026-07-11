@@ -8,10 +8,11 @@
 import { $ } from "bun";
 import fs from "node:fs";
 import path from "node:path";
+import { copyDirIntoContainer } from "../lib/container-fs";
 import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
 import { vibeAgent } from "./vibe/agent";
-import type { AgentDefinition } from "./types";
+import { PERSONAL_ASSET_KINDS, type AgentDefinition, type PersonalAssetKind } from "./types";
 
 // The single registration point.
 const AGENTS = [claudeAgent, vibeAgent] as const;
@@ -65,23 +66,47 @@ export function agentPreflight(
   byId.get(agent)?.preflight(projectPath, env);
 }
 
+export interface PersonalAssetPlan {
+  copies: { kind: PersonalAssetKind; src: string; dest: string }[];
+  skipped: PersonalAssetKind[]; // present in .cww/ but unmapped for this agent
+}
+
+// Which of the project's personal .cww/<kind> folders land where for the
+// given agent, per its personalAssets map. Pure data (aside from the
+// existence checks) so tests cover the routing without Docker — same
+// philosophy as agentBuildPlan below.
+export function personalAssetPlan(projectPath: string, agent: Agent): PersonalAssetPlan {
+  const map = byId.get(agent)?.personalAssets ?? {};
+  const copies: PersonalAssetPlan["copies"] = [];
+  const skipped: PersonalAssetKind[] = [];
+  for (const kind of PERSONAL_ASSET_KINDS) {
+    const src = path.join(projectPath, ".cww", kind);
+    if (!fs.existsSync(src)) continue;
+    const dest = map[kind];
+    if (dest) copies.push({ kind, src, dest });
+    else skipped.push(kind);
+  }
+  return { copies, skipped };
+}
+
 // Load personal host-side assets (e.g. .cww/skills) into a freshly created
-// container, dispatching to the agent's own materializeAssets. Agents without
-// the hook still get the notice below when the project has such folders.
+// container, following the agent's personalAssets map. Present-but-unmapped
+// folders get a one-line skip notice.
 export async function materializeCwwAssets(
   projectPath: string,
   container: string,
-  agent = "claude",
+  agent: Agent = "claude",
 ): Promise<void> {
-  const def = byId.get(agent);
-  if (!def?.materializeAssets) {
-    const subs = ["skills", "commands", "agents"];
-    if (subs.some((sub) => fs.existsSync(path.join(projectPath, ".cww", sub)))) {
-      info(`Personal .cww/{skills,commands,agents} are Claude Code-specific; skipped for ${agent}.`);
+  const { copies, skipped } = personalAssetPlan(projectPath, agent);
+  for (const { kind, src, dest } of copies) {
+    if (await copyDirIntoContainer(src, container, dest)) {
+      info(`Loaded personal .cww/${kind} into the workspace (${dest.replace("/home/developer", "~")})`);
     }
-    return;
   }
-  await def.materializeAssets(projectPath, container);
+  if (skipped.length > 0) {
+    const what = skipped.length === 1 ? `.cww/${skipped[0]} isn't` : `.cww/{${skipped.join(",")}} aren't`;
+    info(`Personal ${what} supported by ${agentLabel(agent)}; skipped.`);
+  }
 }
 
 export interface BuildStep {

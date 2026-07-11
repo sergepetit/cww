@@ -6,8 +6,15 @@
 //
 // Import-cycle guard: agent modules must never import src/lib/docker.ts
 // (docker.ts imports the registry, which loads every agent module at import
-// time). Shared docker-cp plumbing for materializeAssets lives in
-// src/lib/container-fs.ts instead.
+// time). Agents declare their personal assets declaratively (personalAssets
+// below); the registry owns the docker-cp plumbing, so agent modules need no
+// container access at all.
+
+// The personal asset folders a project may carry under .cww/. Skills are the
+// open Agent Skills format (agentskills.io) and thus portable across agents;
+// commands and agents are Claude Code file formats.
+export const PERSONAL_ASSET_KINDS = ["skills", "commands", "agents"] as const;
+export type PersonalAssetKind = (typeof PERSONAL_ASSET_KINDS)[number];
 
 export interface AgentDefinition<Id extends string = string> {
   id: Id; // e.g. "claude" — also the image tag suffix and Dockerfile folder
@@ -18,8 +25,9 @@ export interface AgentDefinition<Id extends string = string> {
   // dropping the user into an in-container login screen.
   preflight(projectPath: string, env: Record<string, string | undefined>): void;
 
-  // Optional: load personal host-side assets (e.g. .cww/skills) into the
-  // freshly created container. Agents without this hook get the generic
-  // "skipped" notice from the registry dispatcher.
-  materializeAssets?(projectPath: string, container: string): Promise<void>;
+  // Which personal .cww/<kind> folders this agent consumes, and where each
+  // lands in the container. The registry copies mapped kinds and prints a
+  // skip notice for present-but-unmapped ones; declare {} to opt out of the
+  // whole mechanism.
+  personalAssets: Partial<Record<PersonalAssetKind, string>>;
 }

@@ -1,7 +1,5 @@
 // Mistral Vibe. The Dockerfile and the config files it bakes live alongside
-// this definition; see types.ts for the folder contract. No materializeAssets:
-// the personal .cww/{skills,commands,agents} triad is a Claude Code concept
-// (a mapping into Vibe's ~/.vibe layout is a possible follow-up).
+// this definition; see types.ts for the folder contract.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -11,6 +9,15 @@ import type { AgentDefinition } from "../types";
 export const vibeAgent: AgentDefinition<"vibe"> = {
   id: "vibe",
   label: "Mistral Vibe",
+
+  // Skills follow the shared Agent Skills format; Vibe reads ~/.vibe/skills,
+  // and a skill with `user-invocable: true` doubles as a slash command.
+  // commands/agents stay unmapped — those are Claude Code file formats
+  // (Markdown commands/subagents); Vibe's equivalents are user-invocable
+  // skills and TOML agent configs.
+  personalAssets: {
+    skills: "/home/developer/.vibe/skills",
+  },
 
   preflight(projectPath, env) {
     if (!env.MISTRAL_API_KEY) {

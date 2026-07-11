@@ -2,6 +2,7 @@
 type: guide
 title: cww User Guide
 description: Full user documentation — installation, authentication, every command, the Docker image, project services, the built-in browser, configuration, and troubleshooting
+timestamp: 2026-07-11
 ---
 
 # cww User Guide
@@ -105,7 +106,7 @@ A **workspace** is the unit cww manages, identified by a **name you choose** (no
 
 ### `cww create [project-path] <workspace-name> [options]`
 
-Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also runs the project's optional `.cww/reset.sh` (if present), copies your personal `.cww/{skills,commands,agents}/` into the container (claude agent only; see [Project-specific services](#project-specific-services)), and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
+Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also runs the project's optional `.cww/reset.sh` (if present), copies your personal `.cww/skills/` into the container for either agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
 
 `--agent <claude|vibe>` picks the coding agent (default: `CWW_AGENT` from `~/.cww/env` or `<repo>/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
 
@@ -317,12 +318,10 @@ A project can ship an optional `.cww/reset.sh` — one script that resets **and*
 
 ### Skills, commands, and agents (two tiers)
 
-cww makes two kinds of Claude Code skills/commands/agents available in a workspace:
+Skills are the open [Agent Skills](https://agentskills.io) format (a folder with a `SKILL.md`), so the same skill works with both agents. Commands and agents are Claude Code file formats: Vibe's equivalents are skills with `user-invocable: true` (which become slash commands) and TOML agent configs. cww makes these available in a workspace in two tiers:
 
-- **Team (committed in the repo):** anything under `.claude/skills/` (and `.claude/commands/`, `.claude/agents/`) that you commit rides the in-container clone automatically — nothing special to configure. Everyone on the project gets them.
-- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container's `~/.claude/…` at `cww create`. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, or symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`); the copy dereferences symlinks host-side, so the real files land in the container. These are usually gitignored.
-
-The skills/commands/agents triad is a Claude Code concept, so the personal copy is skipped for other agents (Vibe has its own layout under `~/.vibe`; a mapping is a possible follow-up). Repo-committed config for Vibe — like a `.vibe/config.toml` — rides the clone like any other file.
+- **Team (committed in the repo):** each agent reads its own committed locations, and they ride the in-container clone automatically — nothing special to configure. Claude Code reads `.claude/skills/` (plus `.claude/commands/`, `.claude/agents/`); Vibe reads `.vibe/skills/` or `.agents/skills/`. Claude Code does *not* read the generic `.agents/skills/`, so a repo serving both agents commits both locations (an in-repo relative symlink like `.vibe/skills -> ../.claude/skills` rides the clone too). Other repo-committed config for Vibe — like a `.vibe/config.toml` — rides the clone like any other file.
+- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container at `cww create`. `.cww/skills/` loads for whichever agent the workspace runs — into `~/.claude/skills` for Claude Code, `~/.vibe/skills` for Vibe. `.cww/commands/` and `.cww/agents/` are copied only for claude workspaces; vibe workspaces print a one-line skip notice for them. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, or symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`); the copy dereferences symlinks host-side, so the real files land in the container. These are usually gitignored.
 
 ## Built-in headful browser
 

@@ -85,7 +85,7 @@ cww teardown sandbox         # remove the container, services, and metadata
 | `cww cache <preset\|name>` | Provision a shared dependency cache (npm, m2, …) that workspaces can mount |
 | `cww build [agent\|all]` | Build/rebuild a per-agent Docker image (`claude`, `vibe`) |
 
-**Optional per-project hooks** (in your repo's `.cww/`): a `reset.sh` that resets and reseeds service data (run on `create`, re-runnable via `cww reset`), and `skills/`, `commands/`, `agents/` folders whose contents are copied into the agent's `~/.claude/` at create (Claude Code only) — handy for personal skills (symlink your global with `ln -s ~/.claude/skills .cww/skills`). Team skills committed to the repo's own `.claude/skills/` ride the clone automatically.
+**Optional per-project hooks** (in your repo's `.cww/`): a `reset.sh` that resets and reseeds service data (run on `create`, re-runnable via `cww reset`), and personal-asset folders copied into the container at create: `skills/` (the portable [Agent Skills](https://agentskills.io) format) for whichever agent runs — into `~/.claude/skills` or `~/.vibe/skills` — plus `commands/` and `agents/` for Claude Code only. Handy for personal skills (symlink your global with `ln -s ~/.claude/skills .cww/skills`). Team skills committed to the repo's own `.claude/skills/` (Claude Code) or `.vibe/skills/` (Vibe) ride the clone automatically.
 
 ## Choosing an agent
 

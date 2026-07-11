@@ -2,10 +2,7 @@
 // it bakes live alongside this definition; see types.ts for the folder
 // contract.
 
-import fs from "node:fs";
-import path from "node:path";
-import { copyDirIntoContainer } from "../../lib/container-fs";
-import { error, info } from "../../lib/ui";
+import { error } from "../../lib/ui";
 import type { AgentDefinition } from "../types";
 
 export const claudeAgent: AgentDefinition<"claude"> = {
@@ -26,17 +23,13 @@ export const claudeAgent: AgentDefinition<"claude"> = {
     }
   },
 
-  // Copy optional personal skills/commands/agents from the host project's
-  // .cww/ into the container's ~/.claude. The folder's presence is the opt-in
-  // — no flag. (Team skills committed to the repo's .claude/skills ride the
+  // Optional personal skills/commands/agents from the host project's .cww/
+  // land in the container's ~/.claude. The folder's presence is the opt-in —
+  // no flag. (Team skills committed to the repo's .claude/skills ride the
   // clone already and need none of this.)
-  async materializeAssets(projectPath, container) {
-    for (const sub of ["skills", "commands", "agents"]) {
-      const src = path.join(projectPath, ".cww", sub);
-      if (!fs.existsSync(src)) continue;
-      if (await copyDirIntoContainer(src, container, `/home/developer/.claude/${sub}`)) {
-        info(`Loaded personal .cww/${sub} into the workspace (~/.claude/${sub})`);
-      }
-    }
+  personalAssets: {
+    skills: "/home/developer/.claude/skills",
+    commands: "/home/developer/.claude/commands",
+    agents: "/home/developer/.claude/agents",
   },
 };
