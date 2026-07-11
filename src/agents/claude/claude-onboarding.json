@@ -1,0 +1,16 @@
+{
+  "hasCompletedOnboarding": true,
+  "bypassPermissionsModeAccepted": true,
+  "projects": {
+    "/workspace": {
+      "hasTrustDialogAccepted": true
+    }
+  },
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "chrome-devtools-mcp",
+      "args": ["--browser-url=http://127.0.0.1:9222", "--usage-statistics=false"]
+    }
+  }
+}

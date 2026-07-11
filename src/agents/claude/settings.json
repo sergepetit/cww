@@ -1,0 +1,11 @@
+{
+  "theme": "dark",
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "/home/developer/.claude/statusline.sh",
+    "padding": 0
+  }
+}

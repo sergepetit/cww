@@ -2,6 +2,7 @@
 // completions/). Prints newline-separated candidates and nothing else. Must
 // stay fast: it runs on every <TAB>, so no docker calls, no network.
 
+import { CWW_AGENTS } from "../agents/registry";
 import { findAllSessions, readSessionFile, type Session } from "../lib/session";
 
 // Unique workspace names, with the same workspace->branch fallback that
@@ -27,6 +28,12 @@ export function runComplete(argv: string[]): void {
         }
       }
       for (const name of workspaceNames(sessions)) console.log(name);
+      break;
+    }
+    case "agents": {
+      // From the registry (no I/O), so the completion scripts never hardcode
+      // the agent list.
+      for (const agent of CWW_AGENTS) console.log(agent);
       break;
     }
     default:

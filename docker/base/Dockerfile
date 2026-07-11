@@ -1,12 +1,18 @@
-# Coder Workspace Workflow - Development Container
-# Multi-language base image with one final stage per coding agent. The base
-# also carries the shared headful-browser stack (Chrome/Chromium + Xvfb + noVNC) that
-# lets the developer watch/take over the browser the agent drives.
-# Build a specific agent's image with:
-#   docker build --target <claude|vibe> -t coder-workspace-workflow:<agent> .
-# (or just run 'cww build <agent>', which does exactly that)
+# Coder Workspace Workflow — shared base image, tagged cww-base:latest.
+# Multi-language dev environment plus the shared headful-browser stack
+# (Chrome/Chromium + Xvfb + noVNC) that lets the developer watch/take over the
+# browser the agent drives. Per-agent images build FROM this tag — see
+# src/agents/<name>/Dockerfile; 'cww build <agent>' always (re)builds this
+# base first, then the agent image (a no-op rebuild is seconds thanks to the
+# layer cache).
+#
+# cww-base:latest is a plain, unnamespaced local tag — never referenced by
+# compose templates and never shown to users in 'cww list'. An unrelated
+# same-named local image would be silently overwritten by 'cww build' (and,
+# conversely, silently used as the base if cww's own was never built).
+# Acceptable for a local dev tool.
 
-FROM ubuntu:24.04 AS base
+FROM ubuntu:24.04
 
 ARG NODE_VERSION=20
 ARG JAVA_VERSION=25
@@ -51,6 +57,13 @@ ENV LC_ALL=en_US.UTF-8
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Bun system-wide (single static binary + bunx symlink in
+# /usr/local/bin). Baked so cww itself — a TypeScript-on-Bun CLI — can be
+# developed in a workspace out of the box. The official installer picks the
+# right build for the arch (x64/aarch64) and CPU baseline.
+RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash && \
+    bun --version
 
 # Headful browser stack for agent/developer browser cooperation, plus
 # Xvfb/x11vnc/noVNC so the developer can watch — and take over — the same
@@ -125,7 +138,7 @@ RUN cat /tmp/cww-prompt.sh >> /home/developer/.bashrc && \
     rm /tmp/cww-prompt.sh && \
     chown developer:developer /home/developer/.bashrc
 
-# Copy tmux config (copied to docker/ dir during install)
+# Copy tmux config (staged into this build context by 'cww build'/install.sh)
 COPY tmux.conf /home/developer/.tmux.conf
 RUN chown developer:developer /home/developer/.tmux.conf
 
@@ -142,86 +155,6 @@ WORKDIR /workspace
 RUN git config --global init.defaultBranch main && \
     git config --global core.editor "vim"
 
-# The entrypoint launches $CWW_AGENT_CMD (set by each agent stage below) inside
+# The entrypoint launches $CWW_AGENT_CMD (set by each agent image) inside
 # tmux when the container starts with no arguments.
 ENTRYPOINT ["/entrypoint.sh"]
-
-# =============================================================================
-# claude — Anthropic Claude Code
-# =============================================================================
-FROM base AS claude
-USER root
-
-# Install Claude Code CLI + the Chrome DevTools MCP server (pinned; it attaches
-# to the cww browser stack over CDP — see the mcpServers entry baked below).
-RUN npm install -g @anthropic-ai/claude-code chrome-devtools-mcp@1.5.0
-
-# Disable the auto-updater — a disposable container never self-updates.
-# (Note: this stops update *attempts* but does NOT remove the harmless
-# "No write permissions for auto-updates" /status diagnostic, which is an
-# inherent filesystem check on the root-owned npm-global install dir. Removing
-# that line entirely would require switching to the native installer under a
-# user-writable ~/.local/bin, which isn't worth it here.)
-ENV DISABLE_AUTOUPDATER=1
-
-# Bake a minimal, static Claude Code config so a fresh unattended session lands
-# straight at the prompt with ZERO interactive prompts — no host config is
-# copied in (auth is supplied at runtime via CLAUDE_CODE_OAUTH_TOKEN in the
-# env_file). These live in the stateful ~/.claude.json because none of them can
-# be set via settings.json / env / flags (Claude Code issues #4714, #720):
-#   - hasCompletedOnboarding    → skips the theme/welcome wizard
-#   - bypassPermissionsModeAccepted → pre-accepts the one-time
-#     '--dangerously-skip-permissions' acknowledgment
-#   - projects["/workspace"].hasTrustDialogAccepted → pre-trusts the workspace
-#     (the trust dialog is a separate gate that --dangerously-skip-permissions
-#     does NOT bypass)
-# ~/.claude/settings.json holds the declarative bits (theme + nonessential
-# traffic off + a custom status line: "<cwd> | <model> | <context tokens>").
-# The user-scope mcpServers entry (top level of ~/.claude.json — applies to all
-# projects, no approval dialog) points chrome-devtools-mcp at the cww browser
-# stack's CDP port; the entrypoint strips it when CWW_BROWSER=off.
-RUN mkdir -p /home/developer/.claude && \
-    printf '%s\n' '{"hasCompletedOnboarding": true, "bypassPermissionsModeAccepted": true, "projects": {"/workspace": {"hasTrustDialogAccepted": true}}, "mcpServers": {"chrome-devtools": {"type": "stdio", "command": "chrome-devtools-mcp", "args": ["--browser-url=http://127.0.0.1:9222", "--usage-statistics=false"]}}}' > /home/developer/.claude.json && \
-    printf '%s\n' '{"theme": "dark", "env": {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}, "statusLine": {"type": "command", "command": "/home/developer/.claude/statusline.sh", "padding": 0}}' > /home/developer/.claude/settings.json && \
-    chown -R developer:developer /home/developer/.claude /home/developer/.claude.json
-
-# Bake the custom status line script referenced by settings.json above.
-COPY statusline.sh /home/developer/.claude/statusline.sh
-RUN chmod 755 /home/developer/.claude/statusline.sh && \
-    chown developer:developer /home/developer/.claude/statusline.sh
-
-USER developer
-ENV CWW_AGENT_CMD="claude --dangerously-skip-permissions"
-
-# =============================================================================
-# vibe — Mistral Vibe
-# =============================================================================
-FROM base AS vibe
-USER root
-
-# Vibe is a Python 3.12+ tool; Ubuntu 24.04 ships 3.12. pipx gives it an
-# isolated venv under the developer's ~/.local.
-RUN apt-get update && apt-get install -y python3 python3-venv pipx && \
-    rm -rf /var/lib/apt/lists/*
-
-# Chrome DevTools MCP server (same pin as the claude image) so Vibe drives the
-# cww browser stack over CDP. Its [[mcp_servers]] entry ships as a snippet the
-# entrypoint appends to ~/.vibe/config.toml on boot (skipped when
-# CWW_BROWSER=off) — appended at runtime rather than baked, so a disabled
-# browser leaves no dead MCP entry to strip from TOML.
-RUN npm install -g chrome-devtools-mcp@1.5.0
-COPY vibe-mcp.toml /usr/local/share/cww/vibe-mcp.toml
-
-USER developer
-RUN pipx install mistral-vibe
-
-# tmux launches CWW_AGENT_CMD via 'sh -c' (not a login shell), so pipx's bin
-# dir must be on PATH explicitly.
-ENV PATH="/home/developer/.local/bin:${PATH}"
-
-# Auth is supplied at runtime via MISTRAL_API_KEY in the env_file (or a
-# repo-committed .vibe/config.toml for custom providers). --yolo auto-approves
-# tool use (the container is sandboxed, same rationale as claude's
-# --dangerously-skip-permissions); --trust marks the freshly cloned /workspace
-# trusted so a project .vibe/config.toml is honored.
-ENV CWW_AGENT_CMD="vibe --yolo --trust"

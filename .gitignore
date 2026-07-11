@@ -1,5 +1,6 @@
 # Docker build artifacts
 docker/tmux.conf
+docker/base/tmux.conf
 
 # Bun / TypeScript
 node_modules/
@@ -19,3 +20,6 @@ node_modules/
 
 # Tool artifacts
 .playwright-mcp/
+
+# Per-project cww config (may hold secrets/overrides; see src/lib/env.ts)
+.cww/env

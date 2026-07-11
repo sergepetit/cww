@@ -2,7 +2,7 @@
 
 import os from "node:os";
 import path from "node:path";
-import { buildAgentImage, CWW_AGENTS, validateAgent } from "../lib/agents";
+import { buildAgentImage, CWW_AGENTS, validateAgent } from "../agents/registry";
 import { loadEnvFile } from "../lib/env";
 
 const USAGE = `Usage: cww build [agent|all]

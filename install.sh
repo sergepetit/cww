@@ -97,16 +97,16 @@ mkdir -p "$INSTALL_DIR/src"
 cp -R "$SOURCE_DIR/src/." "$INSTALL_DIR/src/"
 cp "$SOURCE_DIR/package.json" "$INSTALL_DIR/"
 
-# Copy docker files
-mkdir -p "$INSTALL_DIR/docker"
-cp "$SOURCE_DIR/docker/Dockerfile" "$INSTALL_DIR/docker/"
-cp "$SOURCE_DIR/docker/entrypoint.sh" "$INSTALL_DIR/docker/"
-cp "$SOURCE_DIR/docker/statusline.sh" "$INSTALL_DIR/docker/"
-cp "$SOURCE_DIR/docker/cww-prompt.sh" "$INSTALL_DIR/docker/"
-cp "$SOURCE_DIR/docker/cww-browser.sh" "$INSTALL_DIR/docker/"
-cp "$SOURCE_DIR/docker/vibe-mcp.toml" "$INSTALL_DIR/docker/"
-# Copy tmux.conf to docker dir for Docker build context
-cp "$SOURCE_DIR/templates/tmux.conf" "$INSTALL_DIR/docker/"
+# Copy docker files: the shared base-image build context. Removed and
+# recreated so leftovers from the retired multi-stage layout (a Dockerfile
+# directly under docker/) don't linger. The per-agent build contexts
+# (Dockerfile + baked config per agent) live under src/agents/ and ride the
+# src/ copy above.
+rm -rf "$INSTALL_DIR/docker"
+mkdir -p "$INSTALL_DIR/docker/base"
+cp -R "$SOURCE_DIR/docker/base/." "$INSTALL_DIR/docker/base/"
+# Stage tmux.conf into the base build context
+cp "$SOURCE_DIR/templates/tmux.conf" "$INSTALL_DIR/docker/base/"
 
 # Copy templates
 mkdir -p "$INSTALL_DIR/templates"
@@ -121,8 +121,8 @@ mkdir -p "$INSTALL_DIR/completions"
 cp "$SOURCE_DIR/completions/"* "$INSTALL_DIR/completions/"
 
 # Make scripts executable
-chmod +x "$INSTALL_DIR/docker/entrypoint.sh"
-chmod +x "$INSTALL_DIR/docker/cww-browser.sh"
+chmod +x "$INSTALL_DIR/docker/base/entrypoint.sh"
+chmod +x "$INSTALL_DIR/docker/base/cww-browser.sh"
 
 success "Files installed"
 
@@ -145,10 +145,11 @@ EOF
 chmod +x "$BIN_DIR/cww"
 success "Launcher created: $BIN_DIR/cww"
 
-# Build the default agent's Docker image. The Dockerfile has one target per
-# coding agent (claude, vibe); which one is the default comes from CWW_AGENT in
-# an existing ~/.cww/env, falling back to claude. The other agents' images
-# build on demand ('cww build <agent>', or on first 'cww create --agent ...').
+# Build the default agent's Docker image: the shared base (cww-base:latest)
+# first, then the agent's own build context under src/agents/. Which agent is
+# the default comes from CWW_AGENT in an existing ~/.cww/env, falling back to
+# claude. The other agents' images build on demand ('cww build <agent>', or on
+# first 'cww create --agent ...').
 DEFAULT_AGENT="claude"
 if [[ -f "$HOME/.cww/env" ]]; then
     # shellcheck disable=SC1091
@@ -157,11 +158,12 @@ if [[ -f "$HOME/.cww/env" ]]; then
 fi
 echo ""
 info "Building Docker image for the '$DEFAULT_AGENT' agent (this may take a few minutes)..."
-BUILD_TAGS=(-t "coder-workspace-workflow:$DEFAULT_AGENT")
-# ':latest' stays an alias of the claude image for compose files that predate
-# per-agent images.
-[[ "$DEFAULT_AGENT" == "claude" ]] && BUILD_TAGS+=(-t coder-workspace-workflow:latest)
-if docker build --target "$DEFAULT_AGENT" "${BUILD_TAGS[@]}" "$INSTALL_DIR/docker"; then
+AGENT_TAGS=(-t "coder-workspace-workflow:$DEFAULT_AGENT")
+# ':latest' stays an alias of the claude image — only the claude image — for
+# compose files that predate per-agent images.
+[[ "$DEFAULT_AGENT" == "claude" ]] && AGENT_TAGS+=(-t coder-workspace-workflow:latest)
+if docker build -t cww-base:latest "$INSTALL_DIR/docker/base" && \
+   docker build "${AGENT_TAGS[@]}" "$INSTALL_DIR/src/agents/$DEFAULT_AGENT"; then
     success "Docker image built: coder-workspace-workflow:$DEFAULT_AGENT"
     info "Other agents build on demand, e.g.: cww build vibe"
 else

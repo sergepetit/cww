@@ -3,10 +3,11 @@ set -e
 
 # Entrypoint for Coder Workspace Workflow container
 # Starts a tmux session running the image's coding agent, or runs the provided
-# command. Which agent this is comes from the image: each agent stage in the
-# Dockerfile sets CWW_AGENT_CMD and bakes the agent's config (onboarding stub,
-# trust, settings); auth arrives via env vars from ~/.cww/env. Nothing is
-# copied from the host, so there is no config-copy step here.
+# command. Which agent this is comes from the image: each per-agent image
+# (src/agents/<name>/Dockerfile) sets CWW_AGENT_CMD and bakes the agent's
+# config (onboarding stub, trust, settings); auth arrives via env vars from
+# ~/.cww/env. Nothing is copied from the host, so there is no config-copy
+# step here.
 
 SESSION_NAME="${TMUX_SESSION:-main}"
 
@@ -60,45 +61,30 @@ if [ -n "$REPO_URL" ] && [ ! -d /workspace/.git ]; then
 fi
 
 # Browser stack (default on): headful Chrome + Xvfb + noVNC, shared by the
-# agent (CDP on 127.0.0.1:9222) and the developer (noVNC on 7900). The agent's
-# MCP access goes the way each agent's config format allows: claude images
-# bake the entry (JSON, jq-stripped here when off); vibe images ship it as a
-# snippet appended here when on (no TOML surgery needed when off). Idempotent
-# across restarts: the launcher is re-run on boot, the jq strip is a no-op
-# once the key is gone, and the append is guarded by a grep.
+# agent (CDP on 127.0.0.1:9222) and the developer (noVNC on 7900). The base
+# stays agent-agnostic: the agent-specific half of the wiring (this image's
+# MCP config) lives in /usr/local/share/cww/browser-hook.sh, shipped by the
+# agent's own Dockerfile (src/agents/<name>/browser-hook.sh). The hook runs
+# exactly once per boot with the resolved mode as $1, must stay idempotent
+# across container restarts, and a hook failure warns but never kills the
+# boot.
 case "${CWW_BROWSER:-on}" in
-    off|0|false|no)
-        # No browser in this workspace: drop the baked chrome-devtools MCP
-        # entry so the agent doesn't see a dead server.
-        if [ -f "$HOME/.claude.json" ]; then
-            tmp="$(mktemp)" && jq 'del(.mcpServers["chrome-devtools"])' "$HOME/.claude.json" > "$tmp" && mv "$tmp" "$HOME/.claude.json" || \
-                echo "[cww] WARNING: could not strip the chrome-devtools MCP entry from ~/.claude.json" >&2
-        fi
-        ;;
-    *)
-        /usr/local/bin/cww-browser >> /tmp/cww-browser.log 2>&1 &
-        if [ -f /usr/local/share/cww/vibe-mcp.toml ]; then
-            if ! grep -qs 'name = "chrome-devtools"' "$HOME/.vibe/config.toml"; then
-                mkdir -p "$HOME/.vibe"
-                cat /usr/local/share/cww/vibe-mcp.toml >> "$HOME/.vibe/config.toml"
-            fi
-            # Vibe reads ONE config.toml: a trusted project config replaces the
-            # user one, hiding the entry appended above. Flag it rather than
-            # editing the repo's committed file (which would dirty the clone).
-            if [ -f /workspace/.vibe/config.toml ] && \
-               ! grep -q 'chrome-devtools' /workspace/.vibe/config.toml; then
-                echo "[cww] NOTE: this repo commits .vibe/config.toml, which makes Vibe ignore ~/.vibe/config.toml — so the built-in browser's chrome-devtools MCP entry won't load." >&2
-                echo "[cww] NOTE: to give Vibe browser access, add the [[mcp_servers]] block from /usr/local/share/cww/vibe-mcp.toml to the repo's .vibe/config.toml." >&2
-            fi
-        fi
-        ;;
+    off|0|false|no) browser_mode=off ;;
+    *)              browser_mode=on ;;
 esac
+if [ "$browser_mode" = "on" ]; then
+    /usr/local/bin/cww-browser >> /tmp/cww-browser.log 2>&1 &
+fi
+if [ -x /usr/local/share/cww/browser-hook.sh ]; then
+    /usr/local/share/cww/browser-hook.sh "$browser_mode" || \
+        echo "[cww] WARNING: browser-hook.sh $browser_mode failed; this agent's browser/MCP wiring may be incomplete." >&2
+fi
 
 # No arguments (the normal compose path): start tmux running the image's agent.
 if [ $# -eq 0 ]; then
     if [ -z "$CWW_AGENT_CMD" ]; then
-        echo "[cww] ERROR: CWW_AGENT_CMD is not set. Build the image via an agent" >&2
-        echo "[cww] target ('cww build <agent>' or docker build --target <agent>)." >&2
+        echo "[cww] ERROR: CWW_AGENT_CMD is not set. This looks like the bare base image;" >&2
+        echo "[cww] build and run a per-agent image instead ('cww build <agent>')." >&2
         exit 1
     fi
     exec tmux new-session -A -s "$SESSION_NAME" -c /workspace "$CWW_AGENT_CMD"

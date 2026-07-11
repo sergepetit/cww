@@ -241,11 +241,12 @@ Your project repo is never modified or used as a worktree. Per-workspace state l
 
 ## Docker image
 
-There is one image per coding agent, built from a shared multi-stage `docker/Dockerfile`: a common `base` stage plus an agent stage that installs the agent's CLI and bakes its config. `cww build [claude|vibe|all]` builds them (no argument builds the configured default agent); a missing image is also offered for building on first `cww create --agent <name>`.
+There is one image per coding agent, layered on a shared base image: `docker/base/Dockerfile` builds the common environment (tagged `cww-base:latest`, a local-only tag), and each agent's self-contained `src/agents/<name>/Dockerfile` builds `FROM` it, installing the agent's CLI and baking its config. `cww build [claude|vibe|all]` builds them — always base first, then the agent (a no-op base rebuild takes seconds thanks to the layer cache); a missing image is also offered for building on first `cww create --agent <name>`.
 
 The shared base includes:
 - Ubuntu 24.04 (shell is bash)
 - Node.js 20
+- Bun (so cww itself can be developed in a workspace)
 - Java 25 (Eclipse Temurin)
 - Google Chrome (amd64) / Chromium (arm64, via the xtradeb PPA) + Xvfb + noVNC — the [built-in headful browser](#built-in-headful-browser) the agent drives and you can watch/take over
 - tmux, git, fzf, ripgrep, fd, jq, and common dev tools
@@ -254,7 +255,7 @@ Deliberately *not* included: compilers (`build-essential`) and build tools like 
 
 > **Note:** Google ships the Chrome `.deb` for amd64 only; arm64 hosts (e.g. Apple Silicon Macs building natively) get Chromium from the xtradeb PPA instead — same headful stack, same CDP port. The PPA is apt-pinned so only `chromium*` packages can come from it.
 
-The agent stages add Claude Code (npm) or Mistral Vibe (pipx) respectively. There's no per-project image hook — every workspace of a given agent shares that agent's image. To add languages or tools for all agents, edit the `base` stage in `docker/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall).
+The agent images add Claude Code (npm) or Mistral Vibe (pipx) respectively. There's no per-project image hook — every workspace of a given agent shares that agent's image. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`.
 
 ## tmux keys
 

@@ -12,16 +12,16 @@ import {
   agentImage,
   ensureAgentImage,
   getCwwDir,
+  materializeCwwAssets,
   resolveAgent,
   validateAgent,
   type Agent,
-} from "../lib/agents";
+} from "../agents/registry";
 import { browserEnabled } from "../lib/config";
 import {
   attachAgentSession,
   containerExists,
   containerRunning,
-  materializeCwwAssets,
   provisionCacheDir,
   runResetScript,
   startTaskStack,

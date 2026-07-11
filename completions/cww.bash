@@ -1,8 +1,9 @@
 # bash completion for cww — installed by install.sh.
 #
 # Commands and flags are hardcoded here (they ship with the CLI, so they can't
-# drift from the installed version); workspace names are dynamic, fetched via
-# the hidden 'cww __complete workspaces' (fast: reads session files, no docker).
+# drift from the installed version); workspace and agent names are dynamic,
+# fetched via the hidden 'cww __complete <topic>' (fast: session files /
+# the agent registry, no docker).
 
 _cww() {
     local cur prev words cword
@@ -18,7 +19,6 @@ _cww() {
     fi
 
     local commands="create teardown attach shell start stop reset list tunnel-command cache build help version"
-    local agents="claude vibe"
     local presets="npm m2 ivy2 sbt coursier gradle"
 
     if [[ $cword -eq 1 ]]; then
@@ -35,7 +35,7 @@ _cww() {
     # Flags that take a value: complete the value, not more flags.
     case $prev in
         --agent)
-            COMPREPLY=($(compgen -W "$agents" -- "$cur"))
+            COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null)" -- "$cur"))
             return
             ;;
         --branch|--ref|--host)
@@ -66,7 +66,7 @@ _cww() {
             COMPREPLY=($(compgen -W "$(cww __complete workspaces 2>/dev/null)" -- "$cur"))
             ;;
         build)
-            COMPREPLY=($(compgen -W "$agents all" -- "$cur"))
+            COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null) all" -- "$cur"))
             ;;
         cache)
             COMPREPLY=($(compgen -W "$presets" -- "$cur"))

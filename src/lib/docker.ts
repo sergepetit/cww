@@ -2,8 +2,12 @@
 
 import { $ } from "bun";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+// Registry values are only read inside function bodies: this module is part
+// of the registry's import graph (agent modules -> container-fs/ui; registry
+// -> agent modules; this file -> registry), so a module-eval-time read could
+// hit a partially initialized module.
+import { CWW_AGENTS } from "../agents/registry";
 import { error, info } from "./ui";
 
 // docker --format templates are interpolated so Bun Shell never parses their
@@ -142,50 +146,6 @@ export async function teardownTask(taskDir: string, container: string): Promise<
   fs.rmSync(taskDir, { recursive: true, force: true });
 }
 
-// Copy optional personal skills/commands/agents from the host project's .cww/
-// into the container's ~/.claude. The folder's presence is the opt-in — no
-// flag. Copied host-side (dereferencing symlinks) so a symlink such as
-// `.cww/skills -> ~/.claude/skills` resolves to real files before docker cp;
-// the symlink target does not exist inside the container. (Team skills
-// committed to the repo's .claude/skills ride the clone already and need none
-// of this.)
-// The skills/commands/agents triad is a Claude Code concept, so this is a
-// no-op for other agents (a mapping into Vibe's ~/.vibe layout is a possible
-// follow-up).
-export async function materializeCwwAssets(
-  projectPath: string,
-  container: string,
-  agent = "claude",
-): Promise<void> {
-  const subs = ["skills", "commands", "agents"];
-  if (agent !== "claude") {
-    if (subs.some((sub) => fs.existsSync(path.join(projectPath, ".cww", sub)))) {
-      info(`Personal .cww/{skills,commands,agents} are Claude Code-specific; skipped for ${agent}.`);
-    }
-    return;
-  }
-  for (const sub of subs) {
-    const src = path.join(projectPath, ".cww", sub);
-    if (!fs.existsSync(src)) continue;
-    const stage = fs.mkdtempSync(path.join(os.tmpdir(), "cww-assets-"));
-    try {
-      try {
-        fs.cpSync(src, stage, { recursive: true, dereference: true });
-      } catch {
-        continue;
-      }
-      await $`docker exec ${container} mkdir -p /home/developer/.claude/${sub}`;
-      await $`docker cp ${stage}/. ${container}:/home/developer/.claude/${sub}/`.quiet();
-      await $`docker exec -u root ${container} chown -R developer:developer /home/developer/.claude/${sub}`
-        .quiet()
-        .nothrow();
-      info(`Loaded personal .cww/${sub} into the workspace (~/.claude/${sub})`);
-    } finally {
-      fs.rmSync(stage, { recursive: true, force: true });
-    }
-  }
-}
-
 // Run the project's optional .cww/reset.sh inside the container to reset/
 // reseed service data. Runs as the developer user with cwd /workspace, so it
 // can reach services over the compose network by hostname. Returns "no-script"
@@ -226,9 +186,9 @@ export async function attachAgentSession(container: string): Promise<never> {
 // ---------------------------------------------------------------------------
 
 // Any locally-built cww image works for these helpers — the `developer` user
-// is identical across the per-agent images (they share the same base stage).
+// is identical across the per-agent images (they share the same base image).
 export async function findAnyCwwImage(): Promise<string | null> {
-  for (const tag of ["claude", "vibe", "latest"]) {
+  for (const tag of [...CWW_AGENTS, "latest"]) {
     const image = `coder-workspace-workflow:${tag}`;
     const r = await $`docker image inspect ${image}`.quiet().nothrow();
     if (r.exitCode === 0) return image;

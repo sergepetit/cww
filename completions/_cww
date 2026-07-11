@@ -2,13 +2,27 @@
 # zsh completion for cww — installed by install.sh.
 #
 # Commands and flags are hardcoded here (they ship with the CLI, so they can't
-# drift from the installed version); workspace names are dynamic, fetched via
-# the hidden 'cww __complete workspaces' (fast: reads session files, no docker).
+# drift from the installed version); workspace and agent names are dynamic,
+# fetched via the hidden 'cww __complete <topic>' (fast: session files /
+# the agent registry, no docker).
 
 _cww_workspaces() {
   local -a names
   names=(${(f)"$(cww __complete workspaces 2>/dev/null)"})
   (( ${#names} )) && _describe -t workspaces 'workspace' names
+}
+
+_cww_agents() {
+  local -a names
+  names=(${(f)"$(cww __complete agents 2>/dev/null)"})
+  (( ${#names} )) && _describe -t agents 'agent' names
+}
+
+# 'cww build' also accepts the literal 'all' besides the agent names.
+_cww_build_targets() {
+  local -a names
+  names=(${(f)"$(cww __complete agents 2>/dev/null)"} all)
+  _describe -t agents 'agent' names
 }
 
 _cww() {
@@ -23,7 +37,7 @@ _cww() {
     'list:List all workspaces'
     "tunnel-command:Print the ssh command to reach a workspace's ports"
     'cache:Provision a shared dependency-cache dir (npm, m2, ...)'
-    'build:Build/rebuild a per-agent Docker image (claude | vibe)'
+    'build:Build/rebuild a per-agent Docker image'
     'help:Show the help message'
     'version:Show the version'
   )
@@ -46,7 +60,7 @@ _cww() {
           _arguments \
             '--branch[branch to check out inside the workspace]:ref:' \
             '--ref[alias for --branch]:ref:' \
-            '--agent[coding agent to run in the workspace]:agent:(claude vibe)' \
+            '--agent[coding agent to run in the workspace]:agent:_cww_agents' \
             '--no-attach[do not attach to tmux after creating]' \
             $help_opt \
             '1:project path or new workspace name:_directories' \
@@ -78,7 +92,7 @@ _cww() {
             '2:container path (custom caches only):'
           ;;
         build)
-          _arguments $help_opt '1:agent:(claude vibe all)'
+          _arguments $help_opt '1:agent:_cww_build_targets'
           ;;
       esac
       ;;

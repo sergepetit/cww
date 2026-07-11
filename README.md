@@ -97,7 +97,7 @@ cww create sandbox --agent vibe   # this workspace runs Mistral Vibe
 
 The default is `claude`; change it globally with `CWW_AGENT=vibe` in `~/.cww/env`, or per project in `<repo>/.cww/env`. Each agent has its own image (`cww build vibe`), built on demand at first use. Auth lives in `~/.cww/env`: `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code, `MISTRAL_API_KEY` for Vibe — or commit a `.vibe/config.toml` to the repo to point Vibe at a local/alternate OpenAI-compatible endpoint instead.
 
-Need extra languages or tools baked into the container itself? Edit the shared `base` stage in `docker/Dockerfile` and run `cww build` — see [Docker image](docs/user-guide.md#docker-image).
+Need extra languages or tools baked into the container itself? Edit the shared base image in `docker/base/Dockerfile` (or a single agent's `src/agents/<name>/Dockerfile`) and run `cww build` — see [Docker image](docs/user-guide.md#docker-image).
 
 See the **[User Guide](docs/user-guide.md)** for every command's options, project-specific services, browser access, configuration, and troubleshooting.
 

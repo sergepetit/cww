@@ -2,7 +2,5 @@
 !Dockerfile
 !entrypoint.sh
 !tmux.conf
-!statusline.sh
 !cww-prompt.sh
 !cww-browser.sh
-!vibe-mcp.toml
