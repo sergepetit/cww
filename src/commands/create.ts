@@ -269,6 +269,14 @@ async function waitForSession(container: string): Promise<boolean> {
   return false;
 }
 
+// The entrypoint leaves this marker when the in-container clone/checkout
+// failed (details in /workspace/cww.log). The tmux session then runs less over
+// the log instead of the agent.
+async function setupFailed(container: string): Promise<boolean> {
+  const r = await $`docker exec ${container} test -f /tmp/cww-setup-failed`.quiet().nothrow();
+  return r.exitCode === 0;
+}
+
 // Once the workspace is up: load any personal .cww assets, run the optional
 // reset/seed script, then attach (or print how to). Used for fresh creates and
 // for recreating a workspace whose container was removed — both start from a
@@ -278,6 +286,19 @@ async function finalizeAndAttach(p: TaskParams, noAttach: boolean): Promise<neve
     warn("tmux session did not appear after 60s; the clone may have failed.");
     warn(`Investigate with: cww shell ${p.workspaceName}`);
     process.exit(1);
+  }
+  // A failed clone leaves nothing to seed — report it and open the failure log
+  // (the session shows 'less /workspace/cww.log'; q lands in a shell there).
+  if (await setupFailed(p.containerName)) {
+    error("Repo setup failed inside the workspace; details in /workspace/cww.log.");
+    if (noAttach) {
+      info(`Read it with: cww attach ${p.workspaceName} (opens the log; q for a shell)`);
+      process.exit(1);
+    }
+    info("Attaching to the failure log (q for a shell; Ctrl-a d to detach)...");
+    console.log("");
+    await attachAgentSession(p.containerName);
+    process.exit(1); // unreachable — attachAgentSession exits
   }
   // Personal skills/commands/agents and the seed script are best-effort — a
   // failure here must not take down an otherwise-good workspace.

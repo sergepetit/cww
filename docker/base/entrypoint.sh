@@ -38,8 +38,12 @@ fi
 # branch -> check it out (git dwim creates a local tracking branch). Otherwise
 # -> start a brand-new branch from the default HEAD.
 #
-# On failure we warn but still drop into tmux: a clone/auth problem should leave
-# the developer a live shell to diagnose, not kill the container.
+# On failure we warn but still start tmux: a clone/auth problem should leave
+# the developer a live session to diagnose, not kill the container. The full
+# clone/checkout output lands in /workspace/cww.log (a header plus the git
+# output), a marker at $SETUP_FAILED_MARKER tells the host CLI and the tmux
+# launch below that setup failed, and the session then opens the log in less
+# over a shell instead of the agent.
 clone_repo() {
     echo "[cww] Cloning $REPO_URL into /workspace ..."
     git clone "$REPO_URL" /workspace || return 1
@@ -53,10 +57,27 @@ clone_repo() {
     fi
 }
 
+SETUP_FAILED_MARKER=/tmp/cww-setup-failed
 if [ -n "$REPO_URL" ] && [ ! -d /workspace/.git ]; then
-    if ! clone_repo; then
-        echo "[cww] WARNING: repo setup failed (check REPO_URL / CWW_GIT_TOKEN / base branch)." >&2
-        echo "[cww] Dropping into a shell so you can investigate; /workspace may be empty or partial." >&2
+    # Clear a previous boot's failure artifacts: this boot retries the clone,
+    # and a leftover cww.log would make 'git clone' refuse the non-empty
+    # /workspace.
+    rm -f /workspace/cww.log "$SETUP_FAILED_MARKER"
+    clone_repo 2>&1 | tee /tmp/cww-setup.log
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+        {
+            echo "[cww] Workspace setup FAILED at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "[cww] repo:   $REPO_URL"
+            echo "[cww] branch: ${BRANCH_NAME:-<repo default>}"
+            echo "[cww] auth:   CWW_GIT_USER=${CWW_GIT_USER:-<unset>}, CWW_GIT_TOKEN $([ -n "$CWW_GIT_TOKEN" ] && echo "set" || echo "NOT set")"
+            echo "[cww] Fix the cause (URL reachable from the container? token/user valid?),"
+            echo "[cww] then retry the clone by hand in this shell, or 'cww teardown' and"
+            echo "[cww] 'cww create' again."
+            echo "--- clone/checkout output --------------------------------------------------"
+            cat /tmp/cww-setup.log
+        } > /workspace/cww.log
+        touch "$SETUP_FAILED_MARKER"
+        echo "[cww] WARNING: repo setup failed; details in /workspace/cww.log." >&2
     fi
 fi
 
@@ -81,7 +102,15 @@ if [ -x /usr/local/share/cww/browser-hook.sh ]; then
 fi
 
 # No arguments (the normal compose path): start tmux running the image's agent.
+# When repo setup failed, open the failure log over a shell instead — an agent
+# in an empty workspace is useless, and the developer needs the error first.
+# (The marker persists across restarts until a boot clones successfully, so
+# reattaching to a broken workspace lands on the log too.)
 if [ $# -eq 0 ]; then
+    if [ -f "$SETUP_FAILED_MARKER" ]; then
+        exec tmux new-session -A -s "$SESSION_NAME" -c /workspace \
+            "less /workspace/cww.log; exec bash -l"
+    fi
     if [ -z "$CWW_AGENT_CMD" ]; then
         echo "[cww] ERROR: CWW_AGENT_CMD is not set. This looks like the bare base image;" >&2
         echo "[cww] build and run a per-agent image instead ('cww build <agent>')." >&2
