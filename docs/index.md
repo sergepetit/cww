@@ -17,6 +17,8 @@ description: Master index of the project's authored documentation
 - [bun-migration-plan.md](bun-migration-plan.md) — Migrate the host-side CLI from Bash to Bun/TypeScript — scope, target layout, phased steps, and what stays in Bash *(done)*
 - [agent-modularization-plan.md](agent-modularization-plan.md) — Restructure per-agent code and config into one self-contained folder per agent (src/agents/&lt;name&gt;/), so adding a new coding agent touches no shared file *(done — host Docker pass 2026-07-11 (zsh completion smoke-tested separately))*
 - [opencode-config-file-plan.md](opencode-config-file-plan.md) — Replace the one-line OPENCODE_CONFIG_CONTENT env-var UX with real JSON files (~/.cww/opencode.json, &lt;repo&gt;/.cww/opencode.json) that cww validates and injects at create *(implemented (unit-tested; host Docker checklist passed 2026-07-12))*
+- [configuration-improvement-plan.md](configuration-improvement-plan.md) — Review of how cww manages configuration, env, settings and tokens — the file layout, host-to-container flow, what works — and proposed improvements ranked by impact *(proposed)*
+- [agent-env-scoping-plan.md](agent-env-scoping-plan.md) — Stop injecting all of ~/.cww/env into every workspace — each agent declares the keys it needs, and an explicit --auth method (persisted like the git setup flow) determines the single credential a workspace gets *(proposed)*
 
 ## Meta
 
