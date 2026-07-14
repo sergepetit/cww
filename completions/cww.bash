@@ -42,6 +42,10 @@ _cww() {
             # Free-form values (branch completion deliberately not offered).
             return
             ;;
+        --remote)
+            COMPREPLY=($(compgen -W "$(git remote 2>/dev/null)" -- "$cur"))
+            return
+            ;;
         --from)
             if type _filedir &>/dev/null; then _filedir -d; else COMPREPLY=($(compgen -d -- "$cur")); fi
             return
@@ -51,7 +55,7 @@ _cww() {
     if [[ $cur == -* ]]; then
         local flags="-h --help"
         case $cmd in
-            create)                flags="--branch --ref --agent --no-attach -h --help" ;;
+            create)                flags="--branch --ref --agent --remote --no-attach -h --help" ;;
             teardown|down)         flags="-y --yes -h --help" ;;
             list|ls)               flags="--json -h --help" ;;
             tunnel-command|tunnel) flags="--host -h --help" ;;

@@ -53,6 +53,8 @@ Options:
   --agent <name>    Coding agent to run in the workspace: claude | vibe
                     (default: CWW_AGENT from ~/.cww/env or <repo>/.cww/env,
                     falling back to claude)
+  --remote <name>   Git remote whose URL the workspace clones
+                    (default: origin; overrides CWW_REPO_URL when given)
   --no-attach       Don't attach to tmux after creating
   -h, --help        Show this help message
 
@@ -287,6 +289,7 @@ export async function runCreate(argv: string[]): Promise<void> {
   let workspaceName = "";
   let branchName = "";
   let agentArg = "";
+  let remoteArg = "";
   let noAttach = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -299,6 +302,9 @@ export async function runCreate(argv: string[]): Promise<void> {
       case "--agent":
         agentArg = argv[++i] ?? "";
         validateAgent(agentArg);
+        break;
+      case "--remote":
+        remoteArg = argv[++i] ?? "";
         break;
       case "--no-attach":
         noAttach = true;
@@ -370,18 +376,27 @@ export async function runCreate(argv: string[]): Promise<void> {
   // already exists keeps its recorded agent instead (see below).
   let agent = resolveAgent(agentArg || undefined);
 
-  // The repo URL to clone inside the container. CWW_REPO_URL (optional)
+  // The repo URL to clone inside the container. An explicit --remote wins
+  // over everything (per-invocation intent). Otherwise CWW_REPO_URL (optional)
   // overrides it verbatim and skips normalization — needed when origin is an
   // SSH remote whose web endpoint can't be inferred, e.g. a self-hosted
   // Forgejo/Gitea on plain http or a non-443 port.
-  let repoUrl = process.env.CWW_REPO_URL ?? "";
+  let repoUrl = "";
+  if (remoteArg) {
+    const remote = await $`git -C ${projectPath} remote get-url ${remoteArg}`.quiet().nothrow();
+    if (remote.exitCode !== 0) {
+      die(`Remote '${remoteArg}' not found in ${projectPath}. Run 'git remote -v' to list remotes.`);
+    }
+    repoUrl = normalizeGitUrl(remote.text().trim());
+  }
+  if (!repoUrl) repoUrl = process.env.CWW_REPO_URL ?? "";
   if (!repoUrl) {
     const origin = await $`git -C ${projectPath} remote get-url origin`.quiet().nothrow();
     if (origin.exitCode === 0) repoUrl = normalizeGitUrl(origin.text().trim());
   }
   if (!repoUrl) {
     die(
-      `Repository has no 'origin' remote and CWW_REPO_URL is unset. cww clones origin inside the container; add a remote or set CWW_REPO_URL in ${projectPath}/.cww/env (per-project) or ~/.cww/env (global).`,
+      `Repository has no 'origin' remote and CWW_REPO_URL is unset. cww clones origin inside the container; add a remote (or pick one with --remote) or set CWW_REPO_URL in ${projectPath}/.cww/env (per-project) or ~/.cww/env (global).`,
     );
   }
 

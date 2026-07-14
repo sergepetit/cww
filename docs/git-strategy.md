@@ -22,7 +22,7 @@ cww **clones the repository inside the container** instead of mounting a host gi
 
 `git worktree add` writes a `.git` *file* pointing at a host path (`gitdir: /host/path/.git/worktrees/<branch>`) the container can't see, so in-container git breaks. A normal clone instead has a self-contained `.git` *directory* with repo-relative internal references — the agent (or you, via `cww shell`) can `clone`, `commit`, `diff`, `log`, and `push` from inside. Isolation comes from a dedicated clone per workspace, not a worktree per task.
 
-At `cww create`, the container clones `origin` and checks out a branch: the one you're on at the host by default, or `--branch <ref>` if you pass it (a name that doesn't exist upstream is created as a fresh branch). That's the *only* branch decision cww makes, and it's just a convenience starting point — switch or create branches freely afterward.
+At `cww create`, the container clones the host's `origin` remote (or the one you pick with `--remote <name>`) and checks out a branch: the one you're on at the host by default, or `--branch <ref>` if you pass it (a name that doesn't exist upstream is created as a fresh branch). That's the *only* branch decision cww makes, and it's just a convenience starting point — switch or create branches freely afterward.
 
 ## Decision 2: clone the real repo with the developer's own credential
 
