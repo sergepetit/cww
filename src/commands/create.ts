@@ -438,10 +438,11 @@ export async function runCreate(argv: string[]): Promise<void> {
     repoUrl = await setupRepo(projectPath, { remote: remoteArg || undefined });
     cfg = getProjectConfig(projectPath);
   }
-  // The project's browser override rides the same env channel as the global
-  // default: browserEnabled() and the {{CWW_BROWSER}} template var both read
-  // process.env.
+  // The project's browser and skill overrides ride the same env channel as
+  // the global defaults: browserEnabled()/skillEnabled() and the
+  // {{CWW_BROWSER}} template var all read process.env.
   if (cfg?.browser) process.env.CWW_BROWSER = cfg.browser;
+  if (cfg?.skill) process.env.CWW_SKILL = cfg.skill;
 
   // Which agent this workspace runs. Precedence: --agent > the project's
   // agent (~/.cww/config.json) > CWW_AGENT (global env) > claude. A workspace

@@ -7,7 +7,9 @@
 
 import { $ } from "bun";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { skillEnabled } from "../lib/config";
 import { copyDirIntoContainer } from "../lib/container-fs";
 import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
@@ -103,14 +105,88 @@ export function personalAssetPlan(projectPath: string, agent: Agent): PersonalAs
   return { copies, skipped };
 }
 
-// Load personal host-side assets (e.g. .cww/skills) into a freshly created
-// container, following the agent's personalAssets map. Present-but-unmapped
-// folders get a one-line skip notice.
+// The docs bundled into the built-in skill as references/ — pulled straight
+// from the install's docs/ at create time, so there is no second copy of the
+// facts to drift (install.sh ships docs/ for this).
+export const BUILTIN_SKILL_REFERENCES = [
+  "user-guide.md",
+  "accessing-services.md",
+  "git-strategy.md",
+] as const;
+
+export interface BuiltinSkillPlan {
+  src: string; // the skill folder in the install (templates/skills/cww)
+  references: string[]; // absolute paths of the reference docs that exist
+  missingReferences: string[]; // basenames absent from the install's docs/
+  dest: string; // where the skill lands in the container
+}
+
+// Where the built-in cww workspace skill comes from and lands for the given
+// agent — null when the skill is disabled (CWW_SKILL=off / project "skill":
+// "off") or the agent maps no skills dir. Pure data aside from the existence
+// checks, mirroring personalAssetPlan.
+export function builtinSkillPlan(
+  agent: Agent,
+  env: Record<string, string | undefined> = process.env,
+): BuiltinSkillPlan | null {
+  if (!skillEnabled(env)) return null;
+  const skillsDir = byId.get(agent)?.personalAssets.skills;
+  if (!skillsDir) return null;
+  const references: string[] = [];
+  const missingReferences: string[] = [];
+  for (const name of BUILTIN_SKILL_REFERENCES) {
+    const doc = path.join(getCwwDir(), "docs", name);
+    if (fs.existsSync(doc)) references.push(doc);
+    else missingReferences.push(name);
+  }
+  return {
+    src: path.join(getCwwDir(), "templates", "skills", "cww"),
+    references,
+    missingReferences,
+    dest: path.join(skillsDir, "cww"),
+  };
+}
+
+// Stage the built-in skill (SKILL.md + references/ assembled from the
+// install's docs/) and copy it into the container. Missing pieces degrade to
+// a warning — never a failed create.
+async function materializeBuiltinSkill(container: string, agent: Agent): Promise<void> {
+  const plan = builtinSkillPlan(agent);
+  if (!plan) return;
+  if (!fs.existsSync(path.join(plan.src, "SKILL.md"))) {
+    warn(`Built-in cww skill missing at ${plan.src} (incomplete install?); skipped.`);
+    return;
+  }
+  if (plan.missingReferences.length > 0) {
+    warn(`Built-in cww skill: reference doc(s) missing from the install: ${plan.missingReferences.join(", ")}`);
+  }
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), "cww-skill-"));
+  try {
+    fs.cpSync(plan.src, stage, { recursive: true });
+    const refDir = path.join(stage, "references");
+    fs.mkdirSync(refDir, { recursive: true });
+    for (const doc of plan.references) {
+      fs.copyFileSync(doc, path.join(refDir, path.basename(doc)));
+    }
+    if (await copyDirIntoContainer(stage, container, plan.dest)) {
+      info(`Loaded the built-in cww skill (${plan.dest.replace("/home/developer", "~")})`);
+    }
+  } finally {
+    fs.rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+// Load the built-in cww skill and personal host-side assets (e.g.
+// .cww/skills) into a freshly created container, following the agent's
+// personalAssets map. The built-in skill goes first, so a personal skill of
+// the same name overrides it. Present-but-unmapped folders get a one-line
+// skip notice.
 export async function materializeCwwAssets(
   projectPath: string,
   container: string,
   agent: Agent = "claude",
 ): Promise<void> {
+  await materializeBuiltinSkill(container, agent);
   const { copies, skipped } = personalAssetPlan(projectPath, agent);
   for (const { kind, src, dest } of copies) {
     if (await copyDirIntoContainer(src, container, dest)) {

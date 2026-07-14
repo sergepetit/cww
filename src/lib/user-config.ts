@@ -18,8 +18,8 @@
 // marker that 'cww create' checks before offering the setup flow. remote
 // records which git remote the URL was captured for, so 'cww create
 // --remote <same>' keeps using the (possibly hand-corrected) repoUrl instead
-// of re-deriving. agent and browser are optional per-project overrides of
-// the ~/.cww/env globals. Secrets never live here: tokens go in
+// of re-deriving. agent, browser, and skill are optional per-project
+// overrides of the ~/.cww/env globals. Secrets never live here: tokens go in
 // ~/.cww/credentials.
 
 import fs from "node:fs";
@@ -32,6 +32,7 @@ export interface ProjectConfig {
   remote?: string;
   agent?: string;
   browser?: string;
+  skill?: string;
   [key: string]: unknown; // unknown fields survive a read-modify-write
 }
 

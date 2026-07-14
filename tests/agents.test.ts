@@ -7,6 +7,8 @@ import {
   agentContainerEnv,
   agentImage,
   agentLabel,
+  BUILTIN_SKILL_REFERENCES,
+  builtinSkillPlan,
   CWW_AGENTS,
   getCwwDir,
   personalAssetPlan,
@@ -132,6 +134,41 @@ describe("personalAssetPlan", () => {
         expect(dest).toStartWith("/home/developer/");
       }
     }
+  });
+});
+
+describe("builtinSkillPlan", () => {
+  test("routes the skill into each agent's skills dir under 'cww'", () => {
+    expect(builtinSkillPlan("claude", {})?.dest).toBe("/home/developer/.claude/skills/cww");
+    expect(builtinSkillPlan("vibe", {})?.dest).toBe("/home/developer/.vibe/skills/cww");
+    expect(builtinSkillPlan("opencode", {})?.dest).toBe(
+      "/home/developer/.config/opencode/skills/cww",
+    );
+  });
+
+  test("the source is the install's templates/skills/cww, carrying SKILL.md", () => {
+    for (const agent of CWW_AGENTS) {
+      const plan = builtinSkillPlan(agent, {});
+      expect(plan?.src).toBe(path.join(getCwwDir(), "templates", "skills", "cww"));
+      expect(fs.existsSync(path.join(plan!.src, "SKILL.md"))).toBe(true);
+    }
+  });
+
+  test("references resolve to existing docs in the install (none missing here)", () => {
+    const plan = builtinSkillPlan("claude", {})!;
+    expect(plan.missingReferences).toEqual([]);
+    expect(plan.references.map((r) => path.basename(r))).toEqual([...BUILTIN_SKILL_REFERENCES]);
+    for (const ref of plan.references) {
+      expect(ref).toBe(path.join(getCwwDir(), "docs", path.basename(ref)));
+      expect(fs.existsSync(ref)).toBe(true);
+    }
+  });
+
+  test("CWW_SKILL=off (and friends) opt out", () => {
+    for (const value of ["off", "0", "false", "no"]) {
+      expect(builtinSkillPlan("claude", { CWW_SKILL: value })).toBeNull();
+    }
+    expect(builtinSkillPlan("claude", { CWW_SKILL: "on" })).not.toBeNull();
   });
 });
 

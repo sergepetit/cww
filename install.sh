@@ -108,9 +108,17 @@ cp -R "$SOURCE_DIR/docker/base/." "$INSTALL_DIR/docker/base/"
 # Stage tmux.conf into the base build context
 cp "$SOURCE_DIR/templates/tmux.conf" "$INSTALL_DIR/docker/base/"
 
-# Copy templates
+# Copy templates (recursive: templates/skills/ holds the built-in workspace
+# skill). Removed and recreated so retired templates don't linger.
+rm -rf "$INSTALL_DIR/templates"
 mkdir -p "$INSTALL_DIR/templates"
-cp "$SOURCE_DIR/templates/"* "$INSTALL_DIR/templates/"
+cp -R "$SOURCE_DIR/templates/." "$INSTALL_DIR/templates/"
+
+# Copy docs — the built-in workspace skill bundles them as its reference
+# material at create time (single source of truth, no duplicated copy).
+rm -rf "$INSTALL_DIR/docs"
+mkdir -p "$INSTALL_DIR/docs"
+cp "$SOURCE_DIR/docs/"*.md "$INSTALL_DIR/docs/"
 
 # Copy examples
 mkdir -p "$INSTALL_DIR/examples"
