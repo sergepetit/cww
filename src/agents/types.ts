@@ -30,4 +30,13 @@ export interface AgentDefinition<Id extends string = string> {
   // skip notice for present-but-unmapped ones; declare {} to opt out of the
   // whole mechanism.
   personalAssets: Partial<Record<PersonalAssetKind, string>>;
+
+  // Optional: extra env vars to set on the workspace container at create
+  // time, rendered into the generated compose config (an 'environment:'
+  // entry overrides the env_file). May die() on invalid user config — it
+  // runs alongside preflight, before anything is created.
+  containerEnv?(
+    projectPath: string,
+    env: Record<string, string | undefined>,
+  ): Record<string, string>;
 }

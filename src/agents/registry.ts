@@ -11,11 +11,12 @@ import path from "node:path";
 import { copyDirIntoContainer } from "../lib/container-fs";
 import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
+import { opencodeAgent } from "./opencode/agent";
 import { vibeAgent } from "./vibe/agent";
 import { PERSONAL_ASSET_KINDS, type AgentDefinition, type PersonalAssetKind } from "./types";
 
 // The single registration point.
-const AGENTS = [claudeAgent, vibeAgent] as const;
+const AGENTS = [claudeAgent, vibeAgent, opencodeAgent] as const;
 
 export type Agent = (typeof AGENTS)[number]["id"];
 export const CWW_AGENTS: readonly Agent[] = AGENTS.map((a) => a.id);
@@ -64,6 +65,18 @@ export function agentPreflight(
   env: Record<string, string | undefined> = process.env,
 ): void {
   byId.get(agent)?.preflight(projectPath, env);
+}
+
+// Extra env vars the agent wants set on the workspace container, rendered
+// into the generated compose config by 'cww create'. Agents without the hook
+// contribute nothing. Like preflight, this may die() on invalid user config,
+// so it must run before anything is created.
+export function agentContainerEnv(
+  agent: Agent,
+  projectPath: string,
+  env: Record<string, string | undefined> = process.env,
+): Record<string, string> {
+  return byId.get(agent)?.containerEnv?.(projectPath, env) ?? {};
 }
 
 export interface PersonalAssetPlan {

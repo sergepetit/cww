@@ -59,6 +59,15 @@ Rules:
 
 Every docs folder (`docs/` and each subfolder) carries an `index.md` with `type: readme`: one line per doc, `- [FILE.md](FILE.md) — description`, the description lifted **verbatim** from the doc's frontmatter `description` (plus the `status` in italics when present). `docs/index.md` is the master index and also links to component READMEs elsewhere in the repo. Indexes are navigation aids in the LLM-wiki tradition — they contain no content of their own, so they can always be regenerated from frontmatter. When adding, moving, or re-describing a doc, update the folder's `index.md` and the master index.
 
+## Folder structure
+
+Prefer a flat `docs/` — categorization lives in the `type` field, not in paths. Structure escalates in two steps, each only when the previous one stops working:
+
+1. **Group the index.** When a folder's index mixes audiences or types enough to hurt scanning (roughly 6+ docs), group its entries under `##` headings by theme or type (e.g. "User documentation", "Plans", "Meta"). The files stay put; only the index changes.
+2. **Split a subfolder.** When one `type` dominates a folder and keeps growing (typically `plan` — one plan doc per feature accumulates), move those docs into a subfolder (e.g. `docs/plans/`) with its own `index.md`, and replace their entries in the parent index with one line linking the subfolder's `index.md`. Moving is cheap — the path is not identity — but fix inbound links in the same change.
+
+Don't create subfolders speculatively, and don't split by `status` (done vs. active) — status lives in frontmatter and changes; a doc shouldn't move when its status does.
+
 ## What we deliberately don't adopt
 
 - **File-as-identity.** Docs are referenced by path as usual; we don't treat the path as a stable concept ID, and renaming a doc is fine.

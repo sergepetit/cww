@@ -73,6 +73,36 @@ echo 'MISTRAL_API_KEY=...' >> ~/.cww/env    # get one at https://console.mistral
 
 Alternatively, commit a `.vibe/config.toml` to the repo with a `[[providers]]` entry for a local or other OpenAI-compatible endpoint — it rides the clone into the container, and `cww create --agent vibe` then proceeds without the key (with a warning).
 
+**1c. For the opencode agent — a provider API key.** OpenCode is provider-agnostic and auto-detects whichever key is set; any ONE of these works:
+
+```bash
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.cww/env
+# or OPENAI_API_KEY / OPENROUTER_API_KEY / OPENCODE_API_KEY (OpenCode Zen)
+```
+
+A Claude Pro/Max subscription can **not** be used — OpenCode removed Claude OAuth login (v1.3.0, per Anthropic's terms), so Anthropic access is metered API billing via `ANTHROPIC_API_KEY`.
+
+Alternatively, run on a **local model** with no key at all, via a custom provider config in a real JSON file — machine-wide in `~/.cww/opencode.json`, or per-project in `<repo>/.cww/opencode.json` (personal and host-side like the rest of `.cww/`, usually gitignored; if both exist the project file wins, with no merging between them). `cww create --agent opencode` validates the file host-side — strict JSON, so a typo fails the create loudly with the file and position instead of a silent in-container exit — injects it into the workspace, and proceeds without a key (with a warning). OpenCode merges it *last*, over the workspace's baked config and over a repo-committed `opencode.json` (committing one is the third, team-level option: it rides the clone into the container). See `examples/opencode.json.example` for a starting point. For a llama.cpp `llama-server` running on the Docker host, the config is:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "llama.cpp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "llama-server (local)",
+      "options": { "baseURL": "http://llamahost:8080/v1" },
+      "models": { "your-model-id": { "name": "Your model" } }
+    }
+  },
+  "model": "llama.cpp/your-model-id"
+}
+```
+
+In `baseURL`, point at the Docker host's **LAN IP** — or better, map a name to it in `~/.cww/hosts` (`llamahost 192.168.1.10`, name first) and use that name, so the JSON never changes when the IP does. Two name pitfalls to avoid: the host's own hostname typically resolves to `127.0.1.1` inside containers (the host's `/etc/hosts` self-entry leaks through Docker's DNS forwarding, and loopback there is the *container*), and the oft-cited `host.docker.internal` + `host-gateway` mapping does **not** work under [rootless Docker](#rootless-docker-recommended) — rootlesskit forwards published ports on the host's real interfaces only, so nothing listens on the gateway IP. Tips: keep the llama-server model id stable across model swaps with `llama-server --alias <id>`, and set the model's `limit.context` to the served `n_ctx` (see `/v1/models`) so OpenCode compacts before overrunning the window.
+
+The file is read at `cww create` time (like `~/.cww/hosts` and the env files): edits apply to the *next* created workspace, not running ones. Legacy escape hatch: a one-line `OPENCODE_CONFIG_CONTENT={...}` in `~/.cww/env` still works when no config file exists — the file wins over it when both are present (cww warns).
+
 **2. A git token** so the container can clone the repo — and so you (or the agent) can commit and push over HTTPS from inside it:
 
 ```bash
@@ -106,9 +136,9 @@ A **workspace** is the unit cww manages, identified by a **name you choose** (no
 
 ### `cww create [project-path] <workspace-name> [options]`
 
-Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also runs the project's optional `.cww/reset.sh` (if present), copies your personal `.cww/skills/` into the container for either agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
+Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also runs the project's optional `.cww/reset.sh` (if present), copies your personal `.cww/skills/` into the container for whichever agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
 
-`--agent <claude|vibe>` picks the coding agent (default: `CWW_AGENT` from `~/.cww/env` or `<repo>/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
+`--agent <claude|vibe|opencode>` picks the coding agent (default: `CWW_AGENT` from `~/.cww/env` or `<repo>/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
 
 ```bash
 cww create feature-auth               # From within a git repo (workspace named "feature-auth")
@@ -116,6 +146,7 @@ cww create . feature-auth             # Explicit current directory
 cww create /path/to/project bugfix    # With full project path
 cww create review --branch main       # Check out main instead of the host's current branch
 cww create sandbox --agent vibe       # Run Mistral Vibe instead of the default agent
+cww create sandbox --agent opencode   # ... or OpenCode
 cww create feature-auth --no-attach   # Create without attaching to tmux
 ```
 
@@ -132,7 +163,7 @@ Every workspace command below accepts the same argless form: run from inside the
 
 ### `cww attach [workspace-name]`
 
-Attach to the workspace's agent tmux session (Claude Code or Mistral Vibe, whichever the workspace was created with).
+Attach to the workspace's agent tmux session (Claude Code, Mistral Vibe, or OpenCode — whichever the workspace was created with).
 
 ```bash
 cww attach feature-auth    # By workspace name
@@ -219,6 +250,7 @@ Build or rebuild a per-agent Docker image. With no argument it builds the config
 ```bash
 cww build            # the default agent's image
 cww build vibe       # coder-workspace-workflow:vibe
+cww build opencode   # coder-workspace-workflow:opencode
 cww build all        # every agent
 ```
 
@@ -242,7 +274,7 @@ Your project repo is never modified or used as a worktree. Per-workspace state l
 
 ## Docker image
 
-There is one image per coding agent, layered on a shared base image: `docker/base/Dockerfile` builds the common environment (tagged `cww-base:latest`, a local-only tag), and each agent's self-contained `src/agents/<name>/Dockerfile` builds `FROM` it, installing the agent's CLI and baking its config. `cww build [claude|vibe|all]` builds them — always base first, then the agent (a no-op base rebuild takes seconds thanks to the layer cache); a missing image is also offered for building on first `cww create --agent <name>`.
+There is one image per coding agent, layered on a shared base image: `docker/base/Dockerfile` builds the common environment (tagged `cww-base:latest`, a local-only tag), and each agent's self-contained `src/agents/<name>/Dockerfile` builds `FROM` it, installing the agent's CLI and baking its config. `cww build [claude|vibe|opencode|all]` builds them — always base first, then the agent (a no-op base rebuild takes seconds thanks to the layer cache); a missing image is also offered for building on first `cww create --agent <name>`.
 
 The shared base includes:
 - Ubuntu 24.04 (shell is bash)
@@ -256,7 +288,7 @@ Deliberately *not* included: compilers (`build-essential`) and build tools like 
 
 > **Note:** Google ships the Chrome `.deb` for amd64 only; arm64 hosts (e.g. Apple Silicon Macs building natively) get Chromium from the xtradeb PPA instead — same headful stack, same CDP port. The PPA is apt-pinned so only `chromium*` packages can come from it.
 
-The agent images add Claude Code (npm) or Mistral Vibe (pipx) respectively. There's no per-project image hook — every workspace of a given agent shares that agent's image. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`.
+The agent images add Claude Code (npm), Mistral Vibe (pipx), or OpenCode (npm) respectively. There's no per-project image hook — every workspace of a given agent shares that agent's image. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`.
 
 ## tmux keys
 
@@ -318,16 +350,16 @@ A project can ship an optional `.cww/reset.sh` — one script that resets **and*
 
 ### Skills, commands, and agents (two tiers)
 
-Skills are the open [Agent Skills](https://agentskills.io) format (a folder with a `SKILL.md`), so the same skill works with both agents. Commands and agents are Claude Code file formats: Vibe's equivalents are skills with `user-invocable: true` (which become slash commands) and TOML agent configs. cww makes these available in a workspace in two tiers:
+Skills are the open [Agent Skills](https://agentskills.io) format (a folder with a `SKILL.md`), so the same skill works with every agent. Commands and agents are Claude Code file formats: Vibe's equivalents are skills with `user-invocable: true` (which become slash commands) and TOML agent configs; OpenCode's are its own markdown commands/agents with different frontmatter. cww makes these available in a workspace in two tiers:
 
-- **Team (committed in the repo):** each agent reads its own committed locations, and they ride the in-container clone automatically — nothing special to configure. Claude Code reads `.claude/skills/` (plus `.claude/commands/`, `.claude/agents/`); Vibe reads `.vibe/skills/` or `.agents/skills/`. Claude Code does *not* read the generic `.agents/skills/`, so a repo serving both agents commits both locations (an in-repo relative symlink like `.vibe/skills -> ../.claude/skills` rides the clone too). Other repo-committed config for Vibe — like a `.vibe/config.toml` — rides the clone like any other file.
-- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container at `cww create`. `.cww/skills/` loads for whichever agent the workspace runs — into `~/.claude/skills` for Claude Code, `~/.vibe/skills` for Vibe. `.cww/commands/` and `.cww/agents/` are copied only for claude workspaces; vibe workspaces print a one-line skip notice for them. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, or symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`); the copy dereferences symlinks host-side, so the real files land in the container. These are usually gitignored.
+- **Team (committed in the repo):** each agent reads its own committed locations, and they ride the in-container clone automatically — nothing special to configure. Claude Code reads `.claude/skills/` (plus `.claude/commands/`, `.claude/agents/`); Vibe reads `.vibe/skills/` or `.agents/skills/`; OpenCode reads `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`. Claude Code does *not* read the generic `.agents/skills/`, so a repo serving all agents commits `.claude/skills/` plus a location Vibe reads (an in-repo relative symlink like `.vibe/skills -> ../.claude/skills` rides the clone too). Other repo-committed config — like a `.vibe/config.toml` or an `opencode.json` — rides the clone like any other file.
+- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container at `cww create`. `.cww/skills/` loads for whichever agent the workspace runs — into `~/.claude/skills` for Claude Code, `~/.vibe/skills` for Vibe, `~/.config/opencode/skills` for OpenCode. `.cww/commands/` and `.cww/agents/` are copied only for claude workspaces; vibe and opencode workspaces print a one-line skip notice for them. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, or symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`); the copy dereferences symlinks host-side, so the real files land in the container. These are usually gitignored.
 
 ## Built-in headful browser
 
 Every workspace container runs a real, visible browser (Google Chrome on amd64, Chromium on arm64) on a virtual display (Xvfb), shared by the agent and you:
 
-- **The agent drives it.** Both agents come with the [Chrome DevTools MCP server](https://github.com/ChromeDevTools/chrome-devtools-mcp) preconfigured, attached to that browser over CDP (`127.0.0.1:9222`, container-internal only) — baked into `~/.claude.json` on claude images, appended to `~/.vibe/config.toml` at boot on vibe images. The agent can navigate, click, fill forms, read the console, take screenshots — no setup.
+- **The agent drives it.** All agents come with the [Chrome DevTools MCP server](https://github.com/ChromeDevTools/chrome-devtools-mcp) preconfigured, attached to that browser over CDP (`127.0.0.1:9222`, container-internal only) — baked into `~/.claude.json` on claude images, appended to `~/.vibe/config.toml` at boot on vibe images, baked into `~/.config/opencode/opencode.json` on opencode images. The agent can navigate, click, fill forms, read the console, take screenshots — no setup.
 - **You watch and take over the same browser** via noVNC on container port 7900, published like any service port (loopback-only, Docker-assigned host port — check `cww list`). Open `http://localhost:<host-port>/vnc.html?autoconnect=1&resize=scale` on the docker host, or from another machine through [`cww tunnel-command`](#cww-tunnel-command-workspace-name) and then `http://localhost:7900/vnc.html?autoconnect=1&resize=scale`. Type a login or 2FA code into the page the agent is stuck on, watch what it's doing in real time, then disconnect — the browser (and the agent) keep going. Because each workspace has its own browser, you can hop between workspaces by just switching tabs.
 
 Notes:
@@ -336,7 +368,7 @@ Notes:
 - The browser session (cookies, logins) lives in the container and dies with the workspace — nothing touches your personal browser profile.
 - Closing the browser's last window from noVNC is fine: it restarts automatically (log: `/tmp/cww-browser.log` in the container).
 - Display resolution defaults to 1920x1080; override with `CWW_BROWSER_RESOLUTION=<WxH>` in `~/.cww/env`.
-- Vibe's chrome-devtools entry is appended to the user config (`~/.vibe/config.toml`) at boot. **Caveat:** Vibe reads exactly one `config.toml` — if the repo commits a `.vibe/config.toml`, that (trusted) project config *replaces* the user config and the entry won't load. Such repos keep browser access by adding the same `[[mcp_servers]]` block to their own `.vibe/config.toml` (the entrypoint prints a reminder; the block is at `/usr/local/share/cww/vibe-mcp.toml` in the container).
+- Vibe's chrome-devtools entry is appended to the user config (`~/.vibe/config.toml`) at boot. **Caveat:** Vibe reads exactly one `config.toml` — if the repo commits a `.vibe/config.toml`, that (trusted) project config *replaces* the user config and the entry won't load. Such repos keep browser access by adding the same `[[mcp_servers]]` block to their own `.vibe/config.toml` (the entrypoint prints a reminder; the block is at `/usr/local/share/cww/vibe-mcp.toml` in the container). OpenCode has no such caveat: a repo-committed `opencode.json` *merges over* the baked global config, so the MCP entry survives.
 
 ## Accessing the app in a browser
 

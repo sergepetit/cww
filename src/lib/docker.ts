@@ -112,6 +112,7 @@ export function composeFileArgs(taskDir: string): string[] {
     "docker-compose.services.yml",
     "docker-compose.hosts.yml",
     "docker-compose.browser.yml",
+    "docker-compose.agent.yml",
   ]) {
     const file = path.join(taskDir, optional);
     if (fs.existsSync(file)) args.push("-f", file);

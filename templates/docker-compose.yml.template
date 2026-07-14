@@ -31,5 +31,6 @@ services:
       - TERM=xterm-256color
     # Nothing is mounted from the host: the repo is cloned into /workspace by
     # the entrypoint (self-contained .git), agent auth arrives via the env_file
-    # (CLAUDE_CODE_OAUTH_TOKEN / MISTRAL_API_KEY), and the agent's onboarding
-    # stub + settings are baked into the per-agent image.
+    # (CLAUDE_CODE_OAUTH_TOKEN / MISTRAL_API_KEY / a provider API key for
+    # opencode), and the agent's onboarding stub + settings are baked into the
+    # per-agent image.

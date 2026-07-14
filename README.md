@@ -11,7 +11,7 @@ description: Disposable, full-stack development environments for coding agents �
 
 **Disposable, full-stack development environments for coding agents.**
 
-Each workspace gets its own clone of your repo, wired into its own Docker Compose network — a coding agent (Claude Code or Mistral Vibe) *plus* the real services your app needs (database, cache, search) — so you can run multiple isolated sessions in parallel. Each session is a disposable, sandboxed container, so the agent runs with permissions skipped — no confirmation prompts, no babysitting. Every workspace also runs a [real headful browser](docs/user-guide.md#built-in-headful-browser) the agent drives and you can watch — or take over (logins, 2FA) — from a browser tab via noVNC.
+Each workspace gets its own clone of your repo, wired into its own Docker Compose network — a coding agent (Claude Code, Mistral Vibe, or OpenCode) *plus* the real services your app needs (database, cache, search) — so you can run multiple isolated sessions in parallel. Each session is a disposable, sandboxed container, so the agent runs with permissions skipped — no confirmation prompts, no babysitting. Every workspace also runs a [real headful browser](docs/user-guide.md#built-in-headful-browser) the agent drives and you can watch — or take over (logins, 2FA) — from a browser tab via noVNC.
 
 **Git inside the workspace is yours** — branch, rebase, and push however your team works; cww imposes no workflow.
 
@@ -44,7 +44,7 @@ EOF
 chmod 600 ~/.cww/env
 ```
 
-For Mistral Vibe, set `MISTRAL_API_KEY=...` instead (see [Choosing an agent](#choosing-an-agent)).
+For Mistral Vibe, set `MISTRAL_API_KEY=...` instead; for OpenCode, a provider API key such as `ANTHROPIC_API_KEY` (see [Choosing an agent](#choosing-an-agent)).
 
 The installer also sets up tab completion (bash and zsh) for commands, flags, and workspace names — open a new shell to pick it up.
 
@@ -83,9 +83,9 @@ cww teardown sandbox         # remove the container, services, and metadata
 | `cww list` | List all workspaces and their published ports |
 | `cww tunnel-command [name]` | Print the `ssh -N -L …` command mapping a workspace's ports to stable `localhost` ports (from another machine or the host itself) |
 | `cww cache <preset\|name>` | Provision a shared dependency cache (npm, m2, …) that workspaces can mount |
-| `cww build [agent\|all]` | Build/rebuild a per-agent Docker image (`claude`, `vibe`) |
+| `cww build [agent\|all]` | Build/rebuild a per-agent Docker image (`claude`, `vibe`, `opencode`) |
 
-**Optional per-project hooks** (in your repo's `.cww/`): a `reset.sh` that resets and reseeds service data (run on `create`, re-runnable via `cww reset`), and personal-asset folders copied into the container at create: `skills/` (the portable [Agent Skills](https://agentskills.io) format) for whichever agent runs — into `~/.claude/skills` or `~/.vibe/skills` — plus `commands/` and `agents/` for Claude Code only. Handy for personal skills (symlink your global with `ln -s ~/.claude/skills .cww/skills`). Team skills committed to the repo's own `.claude/skills/` (Claude Code) or `.vibe/skills/` (Vibe) ride the clone automatically.
+**Optional per-project hooks** (in your repo's `.cww/`): a `reset.sh` that resets and reseeds service data (run on `create`, re-runnable via `cww reset`), and personal-asset folders copied into the container at create: `skills/` (the portable [Agent Skills](https://agentskills.io) format) for whichever agent runs — into `~/.claude/skills`, `~/.vibe/skills`, or `~/.config/opencode/skills` — plus `commands/` and `agents/` for Claude Code only. Handy for personal skills (symlink your global with `ln -s ~/.claude/skills .cww/skills`). Team skills committed to the repo's own `.claude/skills/` (Claude Code and OpenCode), `.vibe/skills/` (Vibe), or `.opencode/skills/` (OpenCode) ride the clone automatically.
 
 ## Choosing an agent
 
@@ -95,7 +95,7 @@ The agent is picked **per workspace** at create time and remembered for the work
 cww create sandbox --agent vibe   # this workspace runs Mistral Vibe
 ```
 
-The default is `claude`; change it globally with `CWW_AGENT=vibe` in `~/.cww/env`, or per project in `<repo>/.cww/env`. Each agent has its own image (`cww build vibe`), built on demand at first use. Auth lives in `~/.cww/env`: `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code, `MISTRAL_API_KEY` for Vibe — or commit a `.vibe/config.toml` to the repo to point Vibe at a local/alternate OpenAI-compatible endpoint instead.
+The default is `claude`; change it globally with `CWW_AGENT=vibe` in `~/.cww/env`, or per project in `<repo>/.cww/env`. Each agent has its own image (`cww build vibe`), built on demand at first use. Auth lives in `~/.cww/env`: `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code, `MISTRAL_API_KEY` for Vibe, and for OpenCode any one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` (it auto-detects whichever is set; a Claude Pro/Max subscription can't be used — OpenCode removed Claude OAuth login). Alternatively, commit a config to the repo to point the agent at a local/alternate OpenAI-compatible endpoint instead: `.vibe/config.toml` for Vibe, `opencode.json` for OpenCode (see [the User Guide](docs/user-guide.md#authentication-setup) for a llama.cpp example).
 
 Need extra languages or tools baked into the container itself? Edit the shared base image in `docker/base/Dockerfile` (or a single agent's `src/agents/<name>/Dockerfile`) and run `cww build` — see [Docker image](docs/user-guide.md#docker-image).
 

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { declaredCacheDirs, parseHostsEntries, renderTemplate } from "../src/commands/create";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {
+  declaredCacheDirs,
+  generateAgentEnvOverride,
+  parseHostsEntries,
+  renderTemplate,
+} from "../src/commands/create";
 import { containerHostname } from "../src/lib/naming";
 
 describe("containerHostname", () => {
@@ -51,6 +59,44 @@ services:
 
   test("empty yaml yields nothing", () => {
     expect(declaredCacheDirs("", "/home/dev")).toEqual([]);
+  });
+});
+
+describe("generateAgentEnvOverride", () => {
+  const overrideFile = (taskDir: string) => path.join(taskDir, "docker-compose.agent.yml");
+
+  test("writes an environment override whose value round-trips", () => {
+    const taskDir = fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+    // Realistic payload: minified JSON with quotes, a $schema key, and a URL.
+    const value =
+      '{"$schema":"https://opencode.ai/config.json","provider":{"llama.cpp":{"options":{"baseURL":"http://llamahost:8080/v1"}}}}';
+    generateAgentEnvOverride(taskDir, { OPENCODE_CONFIG_CONTENT: value });
+
+    const yaml = fs.readFileSync(overrideFile(taskDir), "utf8");
+    expect(yaml).toContain("services:\n  coder:\n    environment:\n");
+    const entry = yaml.split("\n").find((l) => l.trimStart().startsWith("- "))!;
+    // The entry is a double-quoted scalar written with JSON.stringify, so
+    // JSON.parse is a YAML-compatible parse of it; compose then collapses the
+    // doubled $ during interpolation.
+    const scalar = JSON.parse(entry.trim().slice(2)) as string;
+    expect(scalar.replaceAll("$$", "$")).toBe(`OPENCODE_CONFIG_CONTENT=${value}`);
+  });
+
+  test("escapes $ so compose interpolation can't eat it", () => {
+    const taskDir = fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+    generateAgentEnvOverride(taskDir, { KEY: 'a "$schema" and ${HOME}' });
+    const yaml = fs.readFileSync(overrideFile(taskDir), "utf8");
+    expect(yaml).toContain("$$schema");
+    expect(yaml).toContain("$${HOME}");
+    expect(yaml).not.toMatch(/[^$]\$[^$]/); // no lone $ left for compose
+  });
+
+  test("no entries removes a stale override file", () => {
+    const taskDir = fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+    generateAgentEnvOverride(taskDir, { KEY: "value" });
+    expect(fs.existsSync(overrideFile(taskDir))).toBe(true);
+    generateAgentEnvOverride(taskDir, {});
+    expect(fs.existsSync(overrideFile(taskDir))).toBe(false);
   });
 });
 
