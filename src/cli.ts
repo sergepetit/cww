@@ -8,6 +8,7 @@ import { runComplete } from "./commands/complete";
 import { runBuild } from "./commands/build";
 import { runCache } from "./commands/cache";
 import { runCreate } from "./commands/create";
+import { runInit } from "./commands/init";
 import { runList } from "./commands/list";
 import { runReset } from "./commands/reset";
 import { runStart } from "./commands/start";
@@ -29,6 +30,8 @@ agnostic — the git workflow inside is yours.
 Usage: cww <command> [arguments]
 
 Commands:
+  init [path]             Set a repo up for cww: store + validate its git credential,
+                          preflight docker/agent auth/image
   create [path] <name>    Create a workspace (clones the repo, brings up services)
   teardown [name]         Remove a workspace's containers, volumes, network, and metadata
   attach [name]           Re-attach to a workspace's agent session
@@ -45,6 +48,7 @@ Commands:
 Run 'cww <command> --help' for more information on a command.
 
 Examples:
+  cww init                                    # One-time repo setup (credential + checks)
   cww create <workspace-name>                 # New workspace from the current repo
   cww create <workspace-name> --branch <ref>  # ... starting on a specific branch
   cww create /path/to/repo <workspace-name>   # ... for a specific repo
@@ -92,6 +96,9 @@ try {
       break;
     case "create":
       await runCreate(rest);
+      break;
+    case "init":
+      await runInit(rest);
       break;
     case "list":
     case "ls":

@@ -72,7 +72,8 @@ if [ -n "$REPO_URL" ] && [ ! -d /workspace/.git ]; then
             echo "[cww] auth:   CWW_GIT_USER=${CWW_GIT_USER:-<unset>}, CWW_GIT_TOKEN $([ -n "$CWW_GIT_TOKEN" ] && echo "set" || echo "NOT set")"
             echo "[cww] Fix the cause (URL reachable from the container? token/user valid?),"
             echo "[cww] then retry the clone by hand in this shell, or 'cww teardown' and"
-            echo "[cww] 'cww create' again."
+            echo "[cww] 'cww create' again. Tip: 'cww init' on the host stores and"
+            echo "[cww] validates the credential up front."
             echo "--- clone/checkout output --------------------------------------------------"
             cat /tmp/cww-setup.log
         } > /workspace/cww.log
@@ -108,8 +109,10 @@ fi
 # reattaching to a broken workspace lands on the log too.)
 if [ $# -eq 0 ]; then
     if [ -f "$SETUP_FAILED_MARKER" ]; then
+        # -X keeps the log in the terminal scrollback after q — the developer
+        # usually wants to copy the error out.
         exec tmux new-session -A -s "$SESSION_NAME" -c /workspace \
-            "less /workspace/cww.log; exec bash -l"
+            "less -X /workspace/cww.log; exec bash -l"
     fi
     if [ -z "$CWW_AGENT_CMD" ]; then
         echo "[cww] ERROR: CWW_AGENT_CMD is not set. This looks like the bare base image;" >&2

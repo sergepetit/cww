@@ -34,10 +34,11 @@ export function validateAgent(agent: string): asserts agent is Agent {
   }
 }
 
-// Resolve the agent for a new workspace. Precedence: explicit --agent argument
-// > CWW_AGENT (from ~/.cww/env or <repo>/.cww/env, both sourced by the caller
-// before this runs) > claude. The default is an explicit literal, not
-// AGENTS[0] — it's policy, not list order.
+// Resolve the agent for a new workspace. Precedence: explicit --agent
+// argument (callers fold the project's ~/.cww/config.json agent into it)
+// > CWW_AGENT (from ~/.cww/env, sourced by the caller before this runs)
+// > claude. The default is an explicit literal, not AGENTS[0] — it's policy,
+// not list order.
 export function resolveAgent(
   requested?: string,
   env: Record<string, string | undefined> = process.env,
@@ -56,9 +57,9 @@ export function agentLabel(agent: string): string {
 }
 
 // Per-agent auth preflight. The container authenticates ONLY via env cww
-// passes in (~/.cww/env, <repo>/.cww/env, or the caller's environment) —
-// nothing is copied from the host — so fail fast with instructions rather
-// than dropping the user into an in-container login screen.
+// passes in (~/.cww/env or the caller's environment) — nothing is copied
+// from the host — so fail fast with instructions rather than dropping the
+// user into an in-container login screen.
 export function agentPreflight(
   agent: Agent,
   projectPath: string,

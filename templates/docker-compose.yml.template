@@ -15,10 +15,13 @@ services:
     # generated docker-compose.browser.yml override, not here.
     init: true
     shm_size: "2gb"
-    # Provides CWW_GIT_TOKEN (the developer's scoped git credential) to the
-    # in-container credential helper. User-owned, mode 600.
+    # Auth env for the container. The global env carries agent auth; the
+    # task-dir env is this repo's git credential, written by 'cww create'
+    # from ~/.cww/credentials. Both user-owned, mode 600.
     env_file:
       - path: {{HOME}}/.cww/env
+        required: false
+      - path: {{TASK_DIR}}/env
         required: false
     environment:
       - TMUX_SESSION=main

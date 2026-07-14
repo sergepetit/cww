@@ -44,9 +44,10 @@ export function getTaskDir(project: string, workspace: string): string {
 }
 
 // Normalize a git remote URL to an https form the in-container credential
-// helper (CWW_GIT_USER + CWW_GIT_TOKEN) can authenticate. SSH remotes are
-// rewritten because we deliberately don't mount SSH keys into the container.
-// (Self-hosted hosts on http / a non-443 port: set CWW_REPO_URL to override.)
+// helper can authenticate. SSH remotes are rewritten because we deliberately
+// don't mount SSH keys into the container. (Self-hosted hosts on http / a
+// non-443 port: the setup flow lets you type the exact URL, stored per
+// project in ~/.cww/config.json.)
 export function normalizeGitUrl(url: string): string {
   // ssh://git@host[:port]/path -> https://host/path. The SSH port is dropped:
   // it is not the web port (web is assumed on default 443).

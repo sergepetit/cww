@@ -5,9 +5,9 @@ import path from "node:path";
 import {
   declaredCacheDirs,
   generateAgentEnvOverride,
-  parseHostsEntries,
   renderTemplate,
 } from "../src/commands/create";
+import { parseHostsEntries } from "../src/lib/hosts";
 import { containerHostname } from "../src/lib/naming";
 
 describe("containerHostname", () => {

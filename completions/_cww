@@ -34,6 +34,7 @@ _cww_build_targets() {
 
 _cww() {
   local -a commands=(
+    'init:Set a repo up for cww (store git credential, preflight checks)'
     'create:Create a workspace (clones the repo, brings up services)'
     "teardown:Remove a workspace's containers, volumes, network, and metadata"
     "attach:Re-attach to a workspace's agent session"
@@ -73,6 +74,13 @@ _cww() {
             $help_opt \
             '1:project path or new workspace name:_directories' \
             '2:new workspace name:'
+          ;;
+        init)
+          _arguments \
+            '--remote[git remote to derive the clone URL from]:remote:_cww_remotes' \
+            '--agent[agent whose auth/image to preflight]:agent:_cww_agents' \
+            $help_opt \
+            '1:project path:_directories'
           ;;
         teardown|down)
           _arguments \

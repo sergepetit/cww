@@ -31,15 +31,13 @@ cd cww
 ./install.sh          # installs to ~/.local/bin/cww and builds the image
 ```
 
-Then add your credentials to `~/.cww/env` (mode 600) — an auth token for the agent you use, and a git token so the container can clone and push:
+Then add the auth token for the agent you use to `~/.cww/env` (mode 600):
 
 ```bash
 claude setup-token    # opens browser; copy the sk-ant-oat01-... token
 
 cat >> ~/.cww/env <<'EOF'
 CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
-CWW_GIT_USER=your-login
-CWW_GIT_TOKEN=...
 EOF
 chmod 600 ~/.cww/env
 ```
@@ -55,9 +53,11 @@ Full setup notes — self-hosted git hosts, token scoping, per-project overrides
 ```bash
 cd /path/to/your/project     # any git repo
 
-cww create sandbox           # clones the repo into a fresh container and
-                             # drops you into the agent (Claude Code by
-                             # default) in tmux
+cww create sandbox           # first run in a repo walks you through setup
+                             # (git token for the clone, validated on the
+                             # spot), then clones the repo into a fresh
+                             # container and drops you into the agent
+                             # (Claude Code by default) in tmux
 
 # Press Ctrl-a d to detach and walk away — the agent keeps running
 
@@ -73,7 +73,8 @@ cww teardown sandbox         # remove the container, services, and metadata
 
 | Command | What it does |
 |---------|--------------|
-| `cww create [path] <name>` | Create a workspace; the container clones the repo and brings up services |
+| `cww create [path] <name>` | Create a workspace; the container clones the repo and brings up services (first run in a repo does the setup) |
+| `cww init [path]` | Re-run a repo's setup — rotate the git token, change the clone URL — and preflight docker/agent auth/image |
 | `cww attach [name]` | Re-attach to a workspace's agent session |
 | `cww shell [name]` | Open a plain login shell in a workspace (run git yourself, inspect services) |
 | `cww start [name]` | Resume a stopped workspace (inverse of `stop`) |
@@ -95,7 +96,7 @@ The agent is picked **per workspace** at create time and remembered for the work
 cww create sandbox --agent vibe   # this workspace runs Mistral Vibe
 ```
 
-The default is `claude`; change it globally with `CWW_AGENT=vibe` in `~/.cww/env`, or per project in `<repo>/.cww/env`. Each agent has its own image (`cww build vibe`), built on demand at first use. Auth lives in `~/.cww/env`: `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code, `MISTRAL_API_KEY` for Vibe, and for OpenCode any one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` (it auto-detects whichever is set; a Claude Pro/Max subscription can't be used — OpenCode removed Claude OAuth login). Alternatively, commit a config to the repo to point the agent at a local/alternate OpenAI-compatible endpoint instead: `.vibe/config.toml` for Vibe, `opencode.json` for OpenCode (see [the User Guide](docs/user-guide.md#authentication-setup) for a llama.cpp example).
+The default is `claude`; change it globally with `CWW_AGENT=vibe` in `~/.cww/env`, or per project with an `"agent"` entry in `~/.cww/config.json`. Each agent has its own image (`cww build vibe`), built on demand at first use. Auth lives in `~/.cww/env`: `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code, `MISTRAL_API_KEY` for Vibe, and for OpenCode any one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` (it auto-detects whichever is set; a Claude Pro/Max subscription can't be used — OpenCode removed Claude OAuth login). Alternatively, commit a config to the repo to point the agent at a local/alternate OpenAI-compatible endpoint instead: `.vibe/config.toml` for Vibe, `opencode.json` for OpenCode (see [the User Guide](docs/user-guide.md#authentication-setup) for a llama.cpp example).
 
 Need extra languages or tools baked into the container itself? Edit the shared base image in `docker/base/Dockerfile` (or a single agent's `src/agents/<name>/Dockerfile`) and run `cww build` — see [Docker image](docs/user-guide.md#docker-image).
 

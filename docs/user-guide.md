@@ -2,7 +2,7 @@
 type: guide
 title: cww User Guide
 description: Full user documentation — installation, authentication, every command, the Docker image, project services, the built-in browser, configuration, and troubleshooting
-timestamp: 2026-07-11
+timestamp: 2026-07-14
 ---
 
 # cww User Guide
@@ -50,7 +50,7 @@ The one wrinkle is the opt-in [dependency-cache mounts](#dependency-caches-opt-i
 
 ## Authentication setup
 
-Credentials live in `~/.cww/env` (mode 600), which is passed into every container. `install.sh` seeds this file from `examples/cww.env.example` on first install. You need two things: auth for the agent you use, and a git token.
+You need two things: auth for the agent you use, and a git token. Agent auth lives in `~/.cww/env` (mode 600), which is passed into every container — `install.sh` seeds this file from `examples/cww.env.example` on first install. The git side is handled by the setup flow the first `cww create` runs (see [point 2](#authentication-setup) below).
 
 **1a. For the claude agent (the default) — a Claude OAuth token** so Claude Code can run:
 
@@ -101,26 +101,37 @@ Alternatively, run on a **local model** with no key at all, via a custom provide
 
 In `baseURL`, point at the Docker host's **LAN IP** — or better, map a name to it in `~/.cww/hosts` (`llamahost 192.168.1.10`, name first) and use that name, so the JSON never changes when the IP does. Two name pitfalls to avoid: the host's own hostname typically resolves to `127.0.1.1` inside containers (the host's `/etc/hosts` self-entry leaks through Docker's DNS forwarding, and loopback there is the *container*), and the oft-cited `host.docker.internal` + `host-gateway` mapping does **not** work under [rootless Docker](#rootless-docker-recommended) — rootlesskit forwards published ports on the host's real interfaces only, so nothing listens on the gateway IP. Tips: keep the llama-server model id stable across model swaps with `llama-server --alias <id>`, and set the model's `limit.context` to the served `n_ctx` (see `/v1/models`) so OpenCode compacts before overrunning the window.
 
-The file is read at `cww create` time (like `~/.cww/hosts` and the env files): edits apply to the *next* created workspace, not running ones. Legacy escape hatch: a one-line `OPENCODE_CONFIG_CONTENT={...}` in `~/.cww/env` still works when no config file exists — the file wins over it when both are present (cww warns).
+The file is read at `cww create` time (like `~/.cww/hosts` and `~/.cww/env`): edits apply to the *next* created workspace, not running ones. Legacy escape hatch: a one-line `OPENCODE_CONFIG_CONTENT={...}` in `~/.cww/env` still works when no config file exists — the file wins over it when both are present (cww warns).
 
-**2. A git token** so the container can clone the repo — and so you (or the agent) can commit and push over HTTPS from inside it:
+**2. A git token** so the container can clone the repo — and so you (or the agent) can commit and push over HTTPS from inside it. Nothing to prepare: **the first `cww create` in a repo runs the setup flow** — it shows the clone URL workspaces will use (derived from a remote — accept it, or type the exact URL for a self-hosted forge on plain http or a non-443 port), prompts for your platform login and a token (hidden input), and **validates the pair with a real `git ls-remote` before saving anything**. `cww init` re-runs the same flow whenever you need it (token rotation, URL change) and adds a preflight of everything else a `cww create` needs (docker, agent auth, agent image).
 
-```bash
-# Append to ~/.cww/env
-CWW_GIT_USER=your-login        # your platform login (Forgejo/Gitea: the username, not your email)
-CWW_GIT_TOKEN=...              # a token scoped as tightly as your host allows
-```
+Setup writes two files:
 
-`CWW_GIT_USER:CWW_GIT_TOKEN` is used as HTTP basic auth and works with GitHub (classic/fine-grained PATs), Forgejo, and Gitea. Use your **login username** for Forgejo/Gitea. Scope the token to just the repo you're working on if the host supports it. See `examples/cww.env.example` for how to create and format it.
+- `~/.cww/credentials` (mode 600) — the tokens, one entry per repo or per host in git's own `~/.git-credentials` format:
 
-By default cww infers the clone URL from your `origin` remote; pass `cww create --remote <name>` to use a different remote (an explicit `--remote` also takes precedence over `CWW_REPO_URL`). If your git host is served over plain http or on a non-default port (common for self-hosted Forgejo/Gitea), set `CWW_REPO_URL` to the exact clone URL — the inferred `https://…:443` URL won't match. Put it in a **per-project** `<repo>/.cww/env`, not the global `~/.cww/env`: `cww create` sources the global env first and then the project env, so a per-project `CWW_REPO_URL` applies to that repo only. A global one pins *every* project to the same clone URL — the classic footgun where `cww create` inside repo B silently clones repo A. Gitignore the file (it can hold machine-specific values):
+  ```
+  https://<user>:<token>@<host>[/<org>/<repo>]
+  ```
 
-```bash
-# <repo>/.cww/env
-CWW_REPO_URL=http://your-host:3000/org/repo.git
-```
+  `user:token` is used as HTTP basic auth and works with GitHub (classic/fine-grained PATs), Forgejo, and Gitea — use your **login username** for Forgejo/Gitea, `x-access-token` for GitHub fine-grained/App tokens. Make it a **fine-grained PAT scoped to the one repo** (contents read/write) where the platform supports it; `cww create` injects only the entry matching the workspace's clone URL, so a workspace never sees another repo's token. To share one token across a whole forge, hand-edit the entry down to `https://user:token@host`. Rotating a token = re-run `cww init` (existing workspaces pick it up when recreated).
 
-See `examples/cww.env.example`.
+- `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"` and `"browser"` overrides of the `~/.cww/env` globals:
+
+  ```json
+  {
+    "projects": {
+      "/home/dev/work/api": {
+        "repoUrl": "http://forgejo.example:3000/org/api.git",
+        "remote": "origin",
+        "agent": "opencode"
+      }
+    }
+  }
+  ```
+
+Clone URL details: the suggestion is inferred from your `origin` remote (SSH remotes are rewritten to https — SSH keys are not mounted into containers); the URL you confirm at setup is what later creates use. `cww create --remote <name>` naming the *same* remote the entry was set up for keeps using the configured URL (with your corrections); a *different* remote is derived fresh for that invocation. A **public repo** needs no token: leave the token prompt empty and setup verifies anonymous access instead (pushes from inside a workspace will still need a credential — add one later with `cww init`).
+
+Setup also **verifies the URL from inside a container** (a throwaway `git ls-remote` with the same `/etc/hosts` extras a workspace gets — skipped until a cww image is built). This catches the classic self-hosted trap: a name like `forgejo.local` that resolves on your machine (via `/etc/hosts`, mDNS, or an ssh alias) but not through container DNS. When that's the diagnosis, setup offers to append the mapping to `~/.cww/hosts` for you, using the address your host resolves.
 
 ## Updating
 
@@ -134,11 +145,20 @@ git pull
 
 A **workspace** is the unit cww manages, identified by a **name you choose** (not a branch). Git inside the workspace is entirely yours — cww imposes no branching, push, or PR workflow.
 
+### `cww init [project-path] [options]`
+
+Explicitly (re)run a repo's setup flow and preflight the machine. The first `cww create` in a repo runs the same setup by itself, so init is for the deliberate cases: **rotating a token** (fine-grained PATs expire), changing the clone URL, pinning a per-project agent, or checking a box is ready without creating anything. It confirms the clone URL (stored in `~/.cww/config.json`), prompts for your git login and token with hidden input, **validates the pair with `git ls-remote` before saving** it to `~/.cww/credentials`, then checks docker, the agent's auth, and the agent image, ending in a ✓/✗ summary. `--remote <name>` derives the URL from a non-origin remote; `--agent <name>` picks which agent to preflight and records it as the project's default. Details in [Authentication setup](#authentication-setup).
+
+```bash
+cww init                       # From within the repo
+cww init --remote upstream     # Clone URL from a different remote
+```
+
 ### `cww create [project-path] <workspace-name> [options]`
 
-Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also runs the project's optional `.cww/reset.sh` (if present), copies your personal `.cww/skills/` into the container for whichever agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
+Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. **The first create in a repo runs the setup flow inline** (clone URL + validated git token — see [Authentication setup](#authentication-setup)); later creates reuse the stored config. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also runs the project's optional `.cww/reset.sh` (if present), copies your personal `.cww/skills/` into the container for whichever agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
 
-`--agent <claude|vibe|opencode>` picks the coding agent (default: `CWW_AGENT` from `~/.cww/env` or `<repo>/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
+`--agent <claude|vibe|opencode>` picks the coding agent (default: the project's `"agent"` in `~/.cww/config.json`, then `CWW_AGENT` from `~/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
 
 ```bash
 cww create feature-auth               # From within a git repo (workspace named "feature-auth")
@@ -261,12 +281,17 @@ Your project repo is never modified or used as a worktree. Per-workspace state l
 ```
 /path/to/project/              # Your original repo (untouched)
 
-~/.cww/tasks/                  # Global per-workspace metadata (host side)
-  myproject-feature-auth/         # One dir per project+workspace
-    session.json               # Workspace metadata (workspace name + checked-out branch)
-    docker-compose.yml         # Generated compose file
-    docker-compose.hosts.yml   # (optional) extra_hosts override
-    docker-compose.browser.yml # (unless CWW_BROWSER=off) publishes the built-in browser's noVNC port
+~/.cww/
+  env                          # Global env forwarded to containers (agent auth, defaults)
+  credentials                  # Git tokens, one per repo/host (git-credentials format, mode 600)
+  config.json                  # Per-project settings (clone URL, agent/browser overrides)
+  tasks/                       # Global per-workspace metadata (host side)
+    myproject-feature-auth/       # One dir per project+workspace
+      session.json             # Workspace metadata (workspace name + checked-out branch)
+      env                      # This repo's git credential, injected into the container (mode 600)
+      docker-compose.yml       # Generated compose file
+      docker-compose.hosts.yml # (optional) extra_hosts override
+      docker-compose.browser.yml # (unless the browser is off) publishes the built-in browser's noVNC port
 
 # Inside the container:
 /workspace                     # Fresh clone of your repo, on the checked-out branch
@@ -364,7 +389,7 @@ Every workspace container runs a real, visible browser (Google Chrome on amd64, 
 
 Notes:
 
-- Disable it by setting `CWW_BROWSER=off` in `~/.cww/env` (global) or `<repo>/.cww/env` (per-project). New workspaces then skip the browser processes, publish no noVNC port, and remove the MCP entry so the agent doesn't see a dead server.
+- Disable it by setting `CWW_BROWSER=off` in `~/.cww/env` (global) or `"browser": "off"` in the project's `~/.cww/config.json` entry (per-project). New workspaces then skip the browser processes, publish no noVNC port, and remove the MCP entry so the agent doesn't see a dead server.
 - The browser session (cookies, logins) lives in the container and dies with the workspace — nothing touches your personal browser profile.
 - Closing the browser's last window from noVNC is fine: it restarts automatically (log: `/tmp/cww-browser.log` in the container).
 - Display resolution defaults to 1920x1080; override with `CWW_BROWSER_RESOLUTION=<WxH>` in `~/.cww/env`.
@@ -391,7 +416,7 @@ Because the tunnel's local side is the stable container port, you keep **one** b
 |----------|---------|-------------|
 | `CWW_INSTALL_DIR` | `~/.local/share/coder-workspace-workflow` | Installation directory |
 | `CWW_BIN_DIR` | `~/.local/bin` | Launcher directory |
-| `CWW_BROWSER` | `on` | [Built-in headful browser](#built-in-headful-browser) for new workspaces; `off`/`0`/`false`/`no` disables (set in `~/.cww/env` or `<repo>/.cww/env`) |
+| `CWW_BROWSER` | `on` | [Built-in headful browser](#built-in-headful-browser) for new workspaces; `off`/`0`/`false`/`no` disables (set in `~/.cww/env`; per project use `"browser"` in `~/.cww/config.json`) |
 | `CWW_BROWSER_RESOLUTION` | `1920x1080` | Virtual display size of the built-in browser (`<width>x<height>`) |
 
 ### Dependency caches (opt-in)
@@ -488,7 +513,11 @@ rm -rf ~/.cww/tasks/<project>-<workspace>/
 
 ### Clone or push fails inside the container
 
-The container clones over HTTPS using `CWW_GIT_USER`/`CWW_GIT_TOKEN` from `~/.cww/env`, and the same credential is what you (or the agent) use to push from inside the workspace. If `cww create` drops you into tmux with a clone error, or a `git push` inside the workspace is rejected, check that those are set and that the token is scoped to the repo. See `examples/cww.env.example` for how to create and format the token.
+The container clones over HTTPS with the repo's entry from `~/.cww/credentials`, and the same credential is what you (or the agent) use to push from inside the workspace. When the clone fails, the workspace opens `less /workspace/cww.log` instead of the agent — the full git error plus the repo/branch/auth context (press `q` for a shell). The fix is usually `cww init` on the host: it re-prompts for the token and **validates it with `git ls-remote` before saving**, then `cww teardown` + `cww create` the workspace again.
+
+### Containers can't reach a LAN git host (macOS)
+
+Signature: the host reaches the forge fine, but from any container **every port** on that LAN machine is refused **instantly** (a few ms — no timeout), while the gateway and the internet work. That refusal is generated locally: on macOS, the **Local Network** privacy permission gates app traffic to LAN addresses (the default gateway is exempt), and Docker doesn't have it. Fix: System Settings → **Privacy & Security → Local Network** → allow **Docker**, then restart Docker Desktop. If Docker isn't listed, `tccutil reset LocalNetwork com.docker.docker` and relaunch Docker to re-trigger the prompt. The setup flow's container-side probe points at this when it sees the signature.
 
 ### Browser app fails with "must run on a secure origin" or Auth0 callback errors
 

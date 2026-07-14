@@ -2,6 +2,7 @@
 type: reference
 title: cww Git Strategy
 description: The two git mechanics cww owns — clone-in-container and the developer's own scoped credential — plus attribution and example workflows
+timestamp: 2026-07-14
 ---
 
 # cww Git Strategy
@@ -66,13 +67,13 @@ Since the push credential is also the developer's, both the commit author and th
 
 ## Credentials
 
-- **Container credential = the developer's own git token**, scoped as tightly as the platform allows — a **fine-grained PAT limited to the single repository**, ideally short-lived (e.g. a GitHub App installation token). Injected via an env-reading credential helper so it never lands in `.git/config` or on disk:
+- **Container credential = the developer's own git token**, scoped as tightly as the platform allows — a **fine-grained PAT limited to the single repository**, ideally short-lived (e.g. a GitHub App installation token). Tokens live in `~/.cww/credentials` (git's `~/.git-credentials` line format, mode 600, outside every repo so a secret can't ride a commit), one entry per repo or per host, written and **validated with `git ls-remote`** by the setup flow (run inline by the first `cww create` in a repo; re-run with `cww init` to rotate). `cww create` injects only the entry matching the workspace's clone URL — a workspace never sees another repo's token. In the container the credential arrives as env and is served by an env-reading helper, so it never lands in `.git/config` or on the container's disk:
   ```
   git config --global credential.helper '!f(){ echo "username=${CWW_GIT_USER:-x-access-token}"; echo "password=$CWW_GIT_TOKEN"; };f'
   ```
-  `CWW_GIT_USER` is the platform login — **required** for Forgejo/Gitea (which reject `x-access-token`); the `x-access-token` default suits GitHub App / fine-grained tokens.
-- **SSH remotes are rewritten to HTTPS** (`normalize_git_url`) because SSH keys are deliberately not mounted into the container. If your host is on plain http or a non-443 port (common for self-hosted Forgejo/Gitea), set `CWW_REPO_URL` to the exact clone URL in a per-project `<repo>/.cww/env`.
-- **Per-user isolation comes from the OS:** each developer runs cww under their own account on the box, with `CWW_GIT_TOKEN` in their own environment (`~/.cww/env`, mode 600). No shared token, no cross-user access.
+  The user field is the platform login — **required** for Forgejo/Gitea (which reject `x-access-token`); `x-access-token` suits GitHub App / fine-grained tokens.
+- **SSH remotes are rewritten to HTTPS** (`normalizeGitUrl`) because SSH keys are deliberately not mounted into the container. If your host is on plain http or a non-443 port (common for self-hosted Forgejo/Gitea), the setup flow persists the exact URL you confirm per project in `~/.cww/config.json`.
+- **Per-user isolation comes from the OS:** each developer runs cww under their own account on the box, with their tokens in their own `~/.cww/credentials` (mode 600). No shared token, no cross-user access.
 - **No signing key** in the container.
 
 ## Disk & performance

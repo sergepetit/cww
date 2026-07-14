@@ -18,7 +18,7 @@ _cww() {
         cword=$COMP_CWORD
     fi
 
-    local commands="create teardown attach shell start stop reset list tunnel-command cache build help version"
+    local commands="init create teardown attach shell start stop reset list tunnel-command cache build help version"
     local presets="npm m2 ivy2 sbt coursier gradle"
 
     if [[ $cword -eq 1 ]]; then
@@ -56,6 +56,7 @@ _cww() {
         local flags="-h --help"
         case $cmd in
             create)                flags="--branch --ref --agent --remote --no-attach -h --help" ;;
+            init)                  flags="--remote --agent -h --help" ;;
             teardown|down)         flags="-y --yes -h --help" ;;
             list|ls)               flags="--json -h --help" ;;
             tunnel-command|tunnel) flags="--host -h --help" ;;
@@ -81,6 +82,9 @@ _cww() {
             if [[ $cur == /* || $cur == .* || $cur == '~'* ]]; then
                 if type _filedir &>/dev/null; then _filedir -d; else COMPREPLY=($(compgen -d -- "$cur")); fi
             fi
+            ;;
+        init)
+            if type _filedir &>/dev/null; then _filedir -d; else COMPREPLY=($(compgen -d -- "$cur")); fi
             ;;
     esac
 }

@@ -1,9 +1,10 @@
-// Minimal loader for cww env files (~/.cww/env, <repo>/.cww/env), mirroring
-// how the bash CLI `source`d them: KEY=VALUE lines with an optional `export `
-// prefix, full-line comments and blanks skipped, matching single or double
-// quotes stripped. Values override the process env, like `source` does. This
-// is NOT a shell — no interpolation, no command substitution — which the cww
-// env files never needed.
+// Minimal loader for the global ~/.cww/env (agent auth tokens, CWW_AGENT/
+// CWW_BROWSER defaults — per-project settings live in ~/.cww/config.json),
+// mirroring how the bash CLI `source`d it: KEY=VALUE lines with an optional
+// `export ` prefix, full-line comments and blanks skipped, matching single or
+// double quotes stripped. Values override the process env, like `source`
+// does. This is NOT a shell — no interpolation, no command substitution —
+// which the cww env file never needed.
 
 import fs from "node:fs";
 

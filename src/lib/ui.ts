@@ -36,6 +36,22 @@ export function confirm(question = "Continue?", def: "y" | "n" = "y"): boolean {
   return /^[yY]/.test(answer);
 }
 
+// Hidden-input prompt for secrets: terminal echo is disabled around Bun's
+// prompt() so the value stays out of the scrollback. Without a TTY (piped
+// stdin) stty would fail, so input is read normally there.
+export function promptSecret(label: string): string {
+  const tty = process.stdin.isTTY === true;
+  if (tty) Bun.spawnSync(["stty", "-echo"], { stdin: "inherit" });
+  try {
+    return (prompt(`${label}:`) ?? "").trim();
+  } finally {
+    if (tty) {
+      Bun.spawnSync(["stty", "echo"], { stdin: "inherit" });
+      console.log(""); // the Enter keystroke was swallowed by -echo
+    }
+  }
+}
+
 // Numbered-menu prompt. Returns the 1-based choice, or 0 on invalid input.
 export function promptChoice(question: string, options: string[]): number {
   console.log(question);
