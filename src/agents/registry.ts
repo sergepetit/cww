@@ -63,16 +63,19 @@ export function agentLabel(agent: string): string {
   return byId.get(agent)?.label ?? agent;
 }
 
-// Per-agent auth preflight. The container authenticates ONLY via env cww
-// passes in (~/.cww/env or the caller's environment) — nothing is copied
-// from the host — so fail fast with instructions rather than dropping the
-// user into an in-container login screen.
+// Per-agent auth preflight for the chosen method. The container
+// authenticates ONLY via env cww passes in — nothing is copied from the host
+// — so fail fast with instructions rather than dropping the user into a
+// broken workspace. The method's envKey (when it has one) was already
+// secured by the caller; this covers the agent-specific rest (config-file
+// existence, keyless notes).
 export function agentPreflight(
   agent: Agent,
   projectPath: string,
+  method: AgentAuthMethod,
   env: Record<string, string | undefined> = process.env,
 ): void {
-  byId.get(agent)?.preflight(projectPath, env);
+  byId.get(agent)?.preflight(projectPath, env, method);
 }
 
 // The auth methods an agent declares ('cww auth' offers them; the first is
@@ -81,13 +84,27 @@ export function agentAuthMethods(agent: Agent): readonly AgentAuthMethod[] {
   return byId.get(agent)?.authMethods ?? [];
 }
 
+// One agent method by id, or null. Callers own the unknown-method error so
+// each can phrase it for its flag ('--auth', '--method').
+export function findAuthMethod(agent: Agent, id: string): AgentAuthMethod | null {
+  return agentAuthMethods(agent).find((m) => m.id === id) ?? null;
+}
+
+// The env keys an agent's methods can carry (keyless methods contribute
+// none). Used as the secret-refresh fallback for sessions from before the
+// chosen method was recorded.
+export function agentAuthEnvKeys(agent: Agent): string[] {
+  return agentAuthMethods(agent)
+    .map((m) => m.envKey)
+    .filter((k): k is string => !!k);
+}
+
 // Every env key that carries an agent secret, across all registered agents.
-// The start-time secret refresh (src/lib/env-refresh.ts) forwards this union
-// — matching the env_file behavior of exposing all of ~/.cww/env. If per-
-// workspace env scoping lands (docs/agent-env-scoping-plan.md), narrow the
-// refresh to the session's recorded agent instead.
+// 'cww auth KEY=VALUE' uses it to classify a key, and the start-time secret
+// refresh falls back to it for sessions recording no agent at all. Workspaces
+// themselves receive only their chosen method's key (see env-refresh.ts).
 export function allAuthEnvKeys(): string[] {
-  return [...new Set(AGENTS.flatMap((a) => a.authMethods.map((m) => m.envKey)))];
+  return [...new Set(AGENTS.flatMap((a) => agentAuthEnvKeys(a.id)))];
 }
 
 // Extra env vars the agent wants set on the workspace container, rendered

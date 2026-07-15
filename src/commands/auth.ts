@@ -1,14 +1,13 @@
 // cww auth — store or renew credentials. Two kinds live in two stores: agent
-// auth tokens are user-wide (~/.cww/env, forwarded to every workspace) and
-// the git credential is per-repo (~/.cww/credentials). cww never mints a
+// auth tokens are user-wide (~/.cww/env; each workspace receives only the
+// single key of the auth method it was created with — see
+// docs/agent-env-scoping-plan.md) and the git credential is per-repo
+// (~/.cww/credentials). cww never mints a
 // token — the user generates it ('claude setup-token', the forge's web UI);
 // auth guides, validates, stores, and reports which workspaces pick the new
 // value up when (stopped: next start, via the start-time secret refresh;
 // running: after a stop + start, the agent process must relaunch).
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { parseArgs } from "node:util";
 import {
   CWW_AGENTS,
@@ -19,14 +18,15 @@ import {
   type Agent,
 } from "../agents/registry";
 import type { AgentAuthMethod } from "../agents/types";
+import { globalEnvFile, promptStoreMethodSecret, storeEnvValue } from "../lib/auth-flow";
 import { loadCredentials, matchCredential } from "../lib/credentials";
 import { containerRunning } from "../lib/docker";
-import { loadEnvFile, upsertEnvLine } from "../lib/env";
+import { loadEnvFile } from "../lib/env";
 import { getGitRoot, isGitRepo } from "../lib/git";
 import { resolveProjectPath } from "../lib/paths";
 import { findAllSessions, readSessionFile, type Session } from "../lib/session";
 import { setupRepo } from "../lib/setup";
-import { confirm, die, info, promptChoice, promptSecret, success, warn } from "../lib/ui";
+import { die, info, promptChoice, warn } from "../lib/ui";
 
 const USAGE = `Usage: cww auth [<agent>|git|KEY=VALUE] [options]
 
@@ -39,9 +39,10 @@ Store or renew a credential:
   cww auth KEY=VALUE       Non-interactive: upsert one line into ~/.cww/env
 
 Agent tokens are user-wide (~/.cww/env, mode 600); the git credential is
-per-repo (~/.cww/credentials). Existing workspaces pick a new value up on
-their next start ('cww start'/'attach'/'shell'); running ones need
-'cww stop' + 'cww start' first — the agent process must relaunch.
+per-repo (~/.cww/credentials). A workspace receives only the key of the auth
+method it was created with ('cww create --auth'). Existing workspaces pick a
+new value up on their next start ('cww start'/'attach'/'shell'); running ones
+need 'cww stop' + 'cww start' first — the agent process must relaunch.
 
 Options:
   --method <m>     Which of the agent's auth methods to store (default: the
@@ -56,33 +57,20 @@ Examples:
 
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-function globalEnvFile(): string {
-  return path.join(os.homedir(), ".cww", "env");
-}
-
-// Upsert KEY=value into ~/.cww/env, preserving the file's other lines. Same
-// belt-and-suspenders mode handling as saveCredentials.
-function storeEnvValue(key: string, value: string): void {
-  const file = globalEnvFile();
-  let text = "";
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
-    // First write — the file is created below.
-  }
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, upsertEnvLine(text, key, value), { mode: 0o600 });
-  fs.chmodSync(file, 0o600); // writeFileSync's mode only applies on create
-  success(`Stored ${key} in ${file}`);
-}
-
-// Does this workspace's agent read the given env key? Sessions with no (or an
-// unknown) recorded agent are included — better a spurious restart hint than
-// a missed one.
+// Does this workspace receive the given env key? A recorded auth method
+// answers exactly (only its own key is injected — env scoping); older
+// sessions fall back to "any of the agent's declared keys", and ones with no
+// (or an unknown) recorded agent are included — better a spurious restart
+// hint than a missed one.
 function usesKey(session: Session, key: string): boolean {
   const agent = typeof session.agent === "string" ? session.agent : "";
   if (!(CWW_AGENTS as readonly string[]).includes(agent)) return true;
-  return agentAuthMethods(agent as Agent).some((m) => m.envKey === key);
+  const methods = agentAuthMethods(agent as Agent);
+  if (typeof session.auth === "string") {
+    const method = methods.find((m) => m.id === session.auth);
+    if (method) return method.envKey === key;
+  }
+  return methods.some((m) => m.envKey === key);
 }
 
 // Tell the user which existing workspaces the new credential reaches, and
@@ -159,56 +147,38 @@ async function authGit(): Promise<void> {
   );
 }
 
-// An agent's token: pick the method, walk through obtaining the secret
-// (offering to run the agent's setup command when it's on the PATH), prompt
-// for the paste, store, report.
+// An agent's token: pick the method (only ones that store a secret — the
+// keyless none/config-file methods have nothing to renew), walk through
+// obtaining it, prompt for the paste, store, report.
 async function authAgent(agent: Agent, methodArg?: string): Promise<void> {
-  const methods = agentAuthMethods(agent);
-  if (methods.length === 0) die(`${agentLabel(agent)} declares no auth methods.`);
+  const storable = agentAuthMethods(agent).filter((m) => m.envKey);
+  if (storable.length === 0) die(`${agentLabel(agent)} declares no auth methods that store a credential.`);
 
   let method: AgentAuthMethod;
   if (methodArg) {
-    const found = methods.find((m) => m.id === methodArg);
+    const found = agentAuthMethods(agent).find((m) => m.id === methodArg);
     if (!found) {
       die(
-        `Unknown method '${methodArg}' for ${agentLabel(agent)} (available: ${methods.map((m) => m.id).join(", ")})`,
+        `Unknown method '${methodArg}' for ${agentLabel(agent)} (available: ${agentAuthMethods(agent).map((m) => m.id).join(", ")})`,
       );
     }
+    if (!found.envKey) {
+      die(`Method '${methodArg}' stores no credential — there is nothing to renew for it.`);
+    }
     method = found;
-  } else if (methods.length === 1) {
-    method = methods[0]!;
+  } else if (storable.length === 1) {
+    method = storable[0]!;
   } else {
     const choice = promptChoice(
       `Which ${agentLabel(agent)} credential?`,
-      methods.map((m) => `${m.id} (${m.envKey})`),
+      storable.map((m) => `${m.id} (${m.envKey})`),
     );
     if (choice === 0) die("No method selected.");
-    method = methods[choice - 1]!;
+    method = storable[choice - 1]!;
   }
 
-  info(`${agentLabel(agent)} — ${method.id} (${method.envKey})`);
-  if (method.instructions) {
-    for (const line of method.instructions.split("\n")) console.log(`  ${line}`);
-  }
-  if (method.setupCommand?.length && process.stdin.isTTY && Bun.which(method.setupCommand[0]!)) {
-    if (confirm(`Run '${method.setupCommand.join(" ")}' now?`)) {
-      const proc = Bun.spawn([...method.setupCommand], {
-        stdio: ["inherit", "inherit", "inherit"],
-      });
-      const code = await proc.exited;
-      if (code !== 0) warn(`'${method.setupCommand.join(" ")}' exited with status ${code}.`);
-    }
-  }
-
-  const value = promptSecret(`Paste the ${method.envKey} value (input hidden)`);
-  if (!value) die("Nothing entered — nothing stored.");
-  if (method.valuePrefix && !value.startsWith(method.valuePrefix)) {
-    warn(`Expected a value starting with '${method.valuePrefix}'.`);
-    if (!confirm("Store it anyway?", "n")) die("Not stored.");
-  }
-
-  storeEnvValue(method.envKey, value);
-  await reportWorkspaces((s) => usesKey(s, method.envKey));
+  await promptStoreMethodSecret(agent, method);
+  await reportWorkspaces((s) => usesKey(s, method.envKey!));
 }
 
 // --- Command -------------------------------------------------------------------

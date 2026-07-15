@@ -20,23 +20,25 @@ owner and format:
 
 | File | What it holds | Format |
 |---|---|---|
-| `~/.cww/env` | Secrets + global defaults (agent tokens, `CWW_AGENT`, `CWW_BROWSER`) | KEY=VALUE, source-style |
-| `~/.cww/config.json` | Per-project settings keyed by git-root realpath (`repoUrl`, `remote`, `agent`, `browser`) | JSON |
+| `~/.cww/env` | Secrets + global defaults (agent tokens, `CWW_AGENT`, `CWW_AUTH`, `CWW_BROWSER`) — host-side only since env scoping | KEY=VALUE, source-style |
+| `~/.cww/services.env` | Pass-through env for the app's services, loaded verbatim into every workspace | KEY=VALUE, compose dotenv |
+| `~/.cww/config.json` | Per-project settings keyed by git-root realpath (`repoUrl`, `remote`, `agent`, `auth`, `browser`) | JSON |
 | `~/.cww/credentials` | Git tokens, one per repo/host | git's `~/.git-credentials` URL format |
 | `~/.cww/hosts` + `<repo>/.cww/hosts` | Container DNS mappings | `hostname ip` lines |
 | `~/.cww/opencode.json` + `<repo>/.cww/opencode.json` | Agent-specific provider config | strict JSON |
-| `~/.cww/tasks/<task>/` | Per-workspace derived state: `session.json`, generated compose files, and an `env` file carrying that repo's single git credential | generated |
+| `~/.cww/tasks/<task>/` | Per-workspace derived state: `session.json`, generated compose files, and an `env` file carrying that repo's single git credential plus the chosen auth method's single agent key | generated |
 
 The flow into a container: `cww create` loads `~/.cww/env` into `process.env`
 (for preflight checks, via `src/lib/env.ts`), applies the project's
 config.json overrides through the same env channel, then compose injects two
-`env_file`s — the global `~/.cww/env` verbatim, plus the task-dir `env`
-holding **only the one credential matching this repo** (longest-path match in
-`src/lib/credentials.ts`, so a container never sees other repos' tokens).
-Static values go through `{{PLACEHOLDER}}` template rendering; dynamic pieces
-(hosts, browser port, agent env) become separate generated compose override
-files. In-container, the token lives only in env and an ephemeral credential
-helper — never written to `.git/config`.
+`env_file`s — the optional `~/.cww/services.env` verbatim, plus the task-dir
+`env` holding **only the one git credential matching this repo** (longest-path
+match in `src/lib/credentials.ts`, so a container never sees other repos'
+tokens) **and only the chosen auth method's agent key** (item 1 below, now
+implemented). Static values go through `{{PLACEHOLDER}}` template rendering;
+dynamic pieces (hosts, browser port, agent env) become separate generated
+compose override files. In-container, the token lives only in env and an
+ephemeral credential helper — never written to `.git/config`.
 
 ## What works well (keep as-is)
 
@@ -58,21 +60,21 @@ helper — never written to `.git/config`.
 
 Ranked by impact; 1 and 4 matter most, the rest is hardening.
 
-### 1. Scope env injection per agent (the biggest wart)
+### 1. Scope env injection per agent (the biggest wart) — DONE 2026-07-15
 
-The whole `~/.cww/env` reaches every container via compose `env_file`. The
-symptom is already documented in `examples/cww.env.example`: an
-`ANTHROPIC_API_KEY` set for opencode is also seen by claude workspaces, where
-Claude Code can prefer it over the subscription token — metered billing.
+The whole `~/.cww/env` reached every container via compose `env_file`. The
+symptom was documented in `examples/cww.env.example`: an `ANTHROPIC_API_KEY`
+set for opencode was also seen by claude workspaces, where Claude Code can
+prefer it over the subscription token — metered billing.
 
-The fix has grown into its own plan —
-[agent-env-scoping-plan.md](agent-env-scoping-plan.md). In short: each agent
-declares the keys it needs (no more blanket `env_file`), a deterministic
-auth-selection rule owned by cww injects exactly one credential per
-workspace, chosen via a generic `--auth <method>` option persisted like the
-git setup flow, with `none` as a consenting log-in-inside-the-workspace
-fallback. That doc also records the rejected "inject nothing by default"
-alternative and the interactions with items 2–4 below.
+The fix grew into its own plan — now implemented; see
+[agent-env-scoping-plan.md](agent-env-scoping-plan.md) for the design and the
+implementation notes. In short: each agent declares its auth methods (no more
+blanket `env_file`), a deterministic auth-selection rule owned by cww injects
+exactly one credential per workspace, chosen via a generic `--auth <method>`
+option persisted like the git setup flow, with `none` as a consenting
+log-in-inside-the-workspace fallback and `~/.cww/services.env` as the
+explicit pass-through for service env.
 
 ### 2. One env file, three parsers — `$` handling diverges
 

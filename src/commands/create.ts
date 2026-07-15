@@ -7,17 +7,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  agentAuthMethods,
   agentContainerEnv,
   agentLabel,
   agentPreflight,
   agentImage,
   ensureAgentImage,
+  findAuthMethod,
   getCwwDir,
   materializeCwwAssets,
   resolveAgent,
   validateAgent,
   type Agent,
 } from "../agents/registry";
+import type { AgentAuthMethod } from "../agents/types";
+import { chooseAuthMethod, promptAuthMethod, promptStoreMethodSecret } from "../lib/auth-flow";
 import { browserEnabled } from "../lib/config";
 import {
   attachAgentSession,
@@ -33,7 +37,7 @@ import { writeTaskEnv } from "../lib/env-refresh";
 import { getCurrentBranch, getGitRoot, isGitRepo } from "../lib/git";
 import { hostsEntries } from "../lib/hosts";
 import { setupRepo } from "../lib/setup";
-import { getProjectConfig } from "../lib/user-config";
+import { getProjectConfig, setProjectConfig } from "../lib/user-config";
 import { containerHostname, getContainerName, getTaskDir, normalizeGitUrl } from "../lib/naming";
 import { resolveProjectPath } from "../lib/paths";
 import { readSession, writeSession } from "../lib/session";
@@ -63,6 +67,14 @@ Options:
   --agent <name>    Coding agent to run in the workspace: claude | vibe | opencode
                     (default: this project's agent in ~/.cww/config.json,
                     then CWW_AGENT from ~/.cww/env, falling back to claude)
+  --auth <method>   How the workspace's agent authenticates — exactly one
+                    credential is injected, per the agent's methods (claude:
+                    oauth-token | api-key | none; run with an unknown value to
+                    list an agent's methods). Default: this project's "auth"
+                    in ~/.cww/config.json, then CWW_AUTH from ~/.cww/env; with
+                    nothing configured, the default method applies when its
+                    key is stored, otherwise create asks once and records the
+                    answer in ~/.cww/config.json
   --remote <name>   Git remote whose URL the workspace clones — a
                     per-invocation override of the project's configured URL
                     (default: origin)
@@ -75,6 +87,7 @@ Examples:
   cww create /path/to/project review  # With full project path
   cww create sandbox --branch main    # Start on a specific branch
   cww create sandbox --agent vibe     # Run Mistral Vibe instead of the default agent
+  cww create sandbox --auth api-key   # Explicit metered API billing for this workspace
 `;
 
 // --- Pure helpers (exported for tests) --------------------------------------
@@ -126,6 +139,9 @@ function generateCompose(p: TaskParams): void {
     GIT_AUTHOR_NAME: p.gitAuthorName,
     GIT_AUTHOR_EMAIL: p.gitAuthorEmail,
     CWW_BROWSER: process.env.CWW_BROWSER || "on",
+    // Rides the template since ~/.cww/env no longer reaches the container
+    // as an env_file; empty means the in-container default applies.
+    CWW_BROWSER_RESOLUTION: process.env.CWW_BROWSER_RESOLUTION || "",
     HOME: os.homedir(),
   });
   fs.writeFileSync(path.join(p.taskDir, "docker-compose.yml"), rendered);
@@ -175,11 +191,11 @@ services:
 
 // Render the override that sets agent-provided extra env vars on the
 // container (from the agent's containerEnv hook, e.g. opencode's personal
-// config file). Compose's 'environment:' section overrides the env_file, so
-// these entries beat a leftover line in ~/.cww/env. Each entry is emitted as
-// a YAML double-quoted scalar via JSON.stringify — JSON string escaping is
-// valid YAML — with '$' doubled so compose interpolation passes the value
-// through verbatim.
+// config file). Compose's 'environment:' section overrides the env_files, so
+// these entries beat a leftover line in ~/.cww/services.env. Each entry is
+// emitted as a YAML double-quoted scalar via JSON.stringify — JSON string
+// escaping is valid YAML — with '$' doubled so compose interpolation passes
+// the value through verbatim.
 export function generateAgentEnvOverride(taskDir: string, entries: Record<string, string>): void {
   const out = path.join(taskDir, "docker-compose.agent.yml");
   const keys = Object.keys(entries);
@@ -327,6 +343,7 @@ export async function runCreate(argv: string[]): Promise<void> {
   let workspaceName = "";
   let branchName = "";
   let agentArg = "";
+  let authArg = "";
   let remoteArg = "";
   let noAttach = false;
 
@@ -340,6 +357,11 @@ export async function runCreate(argv: string[]): Promise<void> {
       case "--agent":
         agentArg = argv[++i] ?? "";
         validateAgent(agentArg);
+        break;
+      case "--auth":
+        // Validated once the agent is known — method lists are per-agent.
+        authArg = argv[++i] ?? "";
+        if (!authArg) die("--auth needs a method name");
         break;
       case "--remote":
         remoteArg = argv[++i] ?? "";
@@ -472,17 +494,22 @@ export async function runCreate(argv: string[]): Promise<void> {
   const taskDir = getTaskDir(projectName, workspaceName);
   const containerName = getContainerName(projectName, workspaceName);
 
-  // A workspace that already has metadata keeps its original agent: the
-  // recorded value beats flags/defaults so a recreate brings back the same
-  // workspace. (Sessions from before agents were recorded default to claude.)
+  // A workspace that already has metadata keeps its original agent and auth
+  // method: the recorded values beat flags/defaults so a recreate brings back
+  // the same workspace. (Sessions from before agents were recorded default to
+  // claude; ones from before the auth method was recorded resolve it fresh
+  // below.)
   const taskDirExists = fs.existsSync(taskDir);
+  let recordedAuth = "";
   if (taskDirExists) {
-    const recorded = (readSession(taskDir).agent as Agent | undefined) || "claude";
+    const session = readSession(taskDir);
+    const recorded = (session.agent as Agent | undefined) || "claude";
     if (agentArg && agentArg !== recorded) {
       warn(`Workspace '${workspaceName}' was created with agent '${recorded}'; ignoring --agent ${agentArg}.`);
       warn("To switch agents, teardown the workspace and create it again.");
     }
     agent = recorded;
+    if (typeof session.auth === "string") recordedAuth = session.auth;
   }
 
   const params: TaskParams = {
@@ -527,13 +554,76 @@ export async function runCreate(argv: string[]): Promise<void> {
   }
 
   // From here on a container gets (re)created, so the agent's auth and image
-  // must be in place. The attach-only paths above need neither. The
-  // containerEnv hook runs here too — it can die() on invalid user config
-  // (e.g. a broken .cww/opencode.json), and that must happen before any
-  // metadata or container is created.
-  agentPreflight(agent, projectPath);
+  // must be in place. The attach-only paths above need neither.
+  //
+  // Which auth method the workspace uses — exactly one credential is
+  // injected (docs/agent-env-scoping-plan.md). A recreate keeps the recorded
+  // method, mirroring the agent; otherwise: --auth > project config > CWW_AUTH
+  // > the agent's only method > the default method when its key is stored >
+  // ask once (TTY) and persist the answer like the repo setup flow.
+  const methods = agentAuthMethods(agent);
+  const methodIds = methods.map((m) => m.id).join(" | ");
+  let method: AgentAuthMethod | null = null;
+  if (recordedAuth && findAuthMethod(agent, recordedAuth)) {
+    if (authArg && authArg !== recordedAuth) {
+      warn(`Workspace '${workspaceName}' was created with auth method '${recordedAuth}'; ignoring --auth ${authArg}.`);
+      warn("To switch methods, teardown the workspace and create it again.");
+    }
+    method = findAuthMethod(agent, recordedAuth);
+  } else if (authArg) {
+    method = findAuthMethod(agent, authArg);
+    if (!method) {
+      die(`Unknown auth method '${authArg}' for ${agentLabel(agent)} (available: ${methodIds})`);
+    }
+  }
+  if (!method) {
+    const choice = chooseAuthMethod({
+      methods,
+      project: cfg?.auth,
+      globalDefault: process.env.CWW_AUTH,
+      env: process.env,
+    });
+    for (const w of choice.warnings) warn(w);
+    method = choice.method;
+    if (!method) {
+      if (!process.stdin.isTTY) {
+        die(
+          `No auth method configured for ${agentLabel(agent)} and no TTY to ask — pass --auth <${methodIds}> or add an "auth" entry to this project in ~/.cww/config.json.`,
+        );
+      }
+      method = promptAuthMethod(agent, methods);
+      setProjectConfig(projectPath, { auth: method.id });
+      info(`Auth method '${method.id}' recorded for this project in ~/.cww/config.json (--auth overrides per create).`);
+    }
+  }
+  info(`Auth: ${method.id}${method.envKey ? ` (${method.envKey})` : ""}`);
+
+  // The chosen method's secret must exist before anything is created; the
+  // interactive store flow is the same one 'cww auth' runs.
+  if (method.envKey && !process.env[method.envKey]) {
+    if (!process.stdin.isTTY) {
+      die(
+        `${method.envKey} is not set (auth method '${method.id}') and no TTY to ask — store it with: cww auth ${agent} --method ${method.id}`,
+      );
+    }
+    info(`Auth method '${method.id}' needs ${method.envKey}, which is not stored yet.`);
+    process.env[method.envKey] = await promptStoreMethodSecret(agent, method);
+  }
+
+  // Agent-specific preflight for the chosen method, and the containerEnv
+  // hook — both can die() on invalid user config (e.g. a broken
+  // .cww/opencode.json), and that must happen before any metadata or
+  // container is created.
+  agentPreflight(agent, projectPath, method);
   const agentEnv = agentContainerEnv(agent, projectPath);
   await ensureAgentImage(agent);
+
+  // The single agent credential the workspace receives, carried by the
+  // task-dir env file next to the git credential.
+  const agentEnvEntries: Record<string, string> =
+    method.envKey && process.env[method.envKey]
+      ? { [method.envKey]: process.env[method.envKey]! }
+      : {};
 
   const projectServices = path.join(projectPath, ".cww", "docker-compose.services.yml");
   const taskServices = path.join(taskDir, "docker-compose.services.yml");
@@ -544,7 +634,10 @@ export async function runCreate(argv: string[]): Promise<void> {
   if (taskDirExists) {
     warn(`Workspace metadata exists at ${taskDir} but no container is present.`);
     info("Recreating the workspace...");
-    writeTaskEnv(taskDir, repoUrl);
+    // Record the resolved auth method (pre-scoping sessions lack it), so the
+    // start-time secret refresh scopes to it from now on.
+    writeSession(taskDir, { ...readSession(taskDir), agent, auth: method.id });
+    writeTaskEnv(taskDir, repoUrl, agentEnvEntries);
     generateCompose(params);
     generateHostsOverride(taskDir, projectPath);
     generateBrowserOverride(taskDir);
@@ -559,6 +652,7 @@ export async function runCreate(argv: string[]): Promise<void> {
     workspace: workspaceName,
     branch: branchName,
     agent,
+    auth: method.id,
     container: containerName,
     taskDir,
     mainRepo: projectPath,
@@ -566,7 +660,7 @@ export async function runCreate(argv: string[]): Promise<void> {
     created: new Date().toISOString(),
   });
 
-  writeTaskEnv(taskDir, repoUrl);
+  writeTaskEnv(taskDir, repoUrl, agentEnvEntries);
 
   info("Generating docker-compose configuration...");
   generateCompose(params);

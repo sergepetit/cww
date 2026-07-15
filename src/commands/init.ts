@@ -8,13 +8,22 @@ import { $ } from "bun";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { agentImage, agentLabel, agentPreflight, resolveAgent, validateAgent } from "../agents/registry";
+import {
+  agentAuthMethods,
+  agentImage,
+  agentLabel,
+  agentPreflight,
+  resolveAgent,
+  validateAgent,
+} from "../agents/registry";
+import type { AgentAuthMethod } from "../agents/types";
+import { chooseAuthMethod, promptAuthMethod } from "../lib/auth-flow";
 import { loadEnvFile } from "../lib/env";
 import { getGitRoot, isGitRepo } from "../lib/git";
 import { resolveProjectPath } from "../lib/paths";
 import { setupRepo } from "../lib/setup";
 import { getProjectConfig, setProjectConfig } from "../lib/user-config";
-import { GREEN, RED, NC, die, error, info, success } from "../lib/ui";
+import { GREEN, RED, NC, die, error, info, success, warn } from "../lib/ui";
 
 const USAGE = `Usage: cww init [project-path] [options]
 
@@ -50,14 +59,18 @@ Examples:
 // The agents' preflight() contract is fail-fast: it prints instructions and
 // calls process.exit. init wants a check mark instead of an abort, so exit is
 // intercepted for the duration of the call (the instructions still print).
-function preflightPasses(agent: Parameters<typeof agentPreflight>[0], projectPath: string): boolean {
+function preflightPasses(
+  agent: Parameters<typeof agentPreflight>[0],
+  projectPath: string,
+  method: AgentAuthMethod,
+): boolean {
   const realExit = process.exit;
   const abort = new Error("preflight-failed");
   process.exit = ((): never => {
     throw abort;
   }) as typeof process.exit;
   try {
-    agentPreflight(agent, projectPath);
+    agentPreflight(agent, projectPath, method);
     return true;
   } catch (e) {
     if (e === abort) return false;
@@ -110,6 +123,28 @@ export async function runInit(argv: string[]): Promise<void> {
   // An explicit --agent becomes the project's default agent.
   if (agentArg) setProjectConfig(projectPath, { agent: agentArg });
 
+  const cfg = getProjectConfig(projectPath);
+  const agent = resolveAgent(agentArg || cfg?.agent || undefined);
+
+  // Which auth method the project's workspaces authenticate with — the same
+  // resolution 'cww create' runs. With nothing configured, init asks and
+  // records the answer (like the git setup above), so the first create
+  // doesn't have to.
+  const methods = agentAuthMethods(agent);
+  const choice = chooseAuthMethod({
+    methods,
+    project: cfg?.auth,
+    globalDefault: process.env.CWW_AUTH,
+    env: process.env,
+  });
+  for (const w of choice.warnings) warn(w);
+  let method = choice.method;
+  if (!method && process.stdin.isTTY) {
+    method = promptAuthMethod(agent, methods);
+    setProjectConfig(projectPath, { auth: method.id });
+    info(`Auth method '${method.id}' recorded for this project in ~/.cww/config.json.`);
+  }
+
   // --- Preflight -----------------------------------------------------------
   console.log("");
   info("Preflight:");
@@ -125,9 +160,21 @@ export async function runInit(argv: string[]): Promise<void> {
   if (docker.exitCode === 0) ok("docker daemon reachable");
   else ready = ko("docker daemon reachable", "start Docker (or check the docker context)");
 
-  const agent = resolveAgent(agentArg || getProjectConfig(projectPath)?.agent || undefined);
-  if (preflightPasses(agent, projectPath)) ok(`${agentLabel(agent)} auth present`);
-  else ready = ko(`${agentLabel(agent)} auth present`, "see instructions above");
+  if (!method) {
+    ready = ko(
+      `${agentLabel(agent)} auth method chosen`,
+      `no TTY to ask — add an "auth" entry to this project in ~/.cww/config.json (one of: ${methods.map((m) => m.id).join(", ")})`,
+    );
+  } else if (method.envKey && !process.env[method.envKey]) {
+    ready = ko(
+      `${agentLabel(agent)} auth present (${method.id})`,
+      `store it with: cww auth ${agent} --method ${method.id}`,
+    );
+  } else if (preflightPasses(agent, projectPath, method)) {
+    ok(`${agentLabel(agent)} auth present (${method.id})`);
+  } else {
+    ready = ko(`${agentLabel(agent)} auth present (${method.id})`, "see instructions above");
+  }
 
   const image = await $`docker image inspect ${agentImage(agent)}`.quiet().nothrow();
   if (image.exitCode === 0) ok(`agent image built (${agentImage(agent)})`);

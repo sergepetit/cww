@@ -14,7 +14,12 @@ export const vibeAgent: AgentDefinition<"vibe"> = {
     {
       id: "api-key",
       envKey: "MISTRAL_API_KEY",
+      label: "Mistral API key (console.mistral.ai)",
       instructions: "Get an API key at https://console.mistral.ai and copy it.",
+    },
+    {
+      id: "config-file",
+      label: "No key — a .vibe/config.toml committed to the repo configures the provider",
     },
   ],
 
@@ -27,22 +32,21 @@ export const vibeAgent: AgentDefinition<"vibe"> = {
     skills: "/home/developer/.vibe/skills",
   },
 
-  preflight(projectPath, env) {
-    if (!env.MISTRAL_API_KEY) {
-      // A repo-committed .vibe/config.toml rides the clone into the container
-      // and can point Vibe at a custom (local or alternate) OpenAI-compatible
-      // provider that needs no Mistral key.
-      if (fs.existsSync(path.join(projectPath, ".vibe", "config.toml"))) {
-        warn(`No MISTRAL_API_KEY set; assuming ${projectPath}/.vibe/config.toml configures a custom provider.`);
-      } else {
-        error("No MISTRAL_API_KEY found (checked ~/.cww/env and the environment).");
-        console.error("  Mistral Vibe in the container needs it to authenticate. Either:");
-        console.error("    - get a key at https://console.mistral.ai and add it:");
-        console.error("        echo 'MISTRAL_API_KEY=...' >> ~/.cww/env");
-        console.error("    - or commit a .vibe/config.toml to the repo with a [[providers]]");
-        console.error("      entry for a local/alternate OpenAI-compatible endpoint.");
+  preflight(projectPath, _env, method) {
+    // api-key's presence is guaranteed by the caller. config-file means: a
+    // repo-committed .vibe/config.toml rides the clone into the container and
+    // points Vibe at a custom (local or alternate) OpenAI-compatible provider
+    // that needs no Mistral key.
+    if (method.id === "config-file") {
+      const file = path.join(projectPath, ".vibe", "config.toml");
+      if (!fs.existsSync(file)) {
+        error(`Auth method 'config-file' selected, but ${file} does not exist.`);
+        console.error("  Commit a .vibe/config.toml to the repo with a [[providers]] entry for");
+        console.error("  a local/alternate OpenAI-compatible endpoint, or pick another method:");
+        console.error("    cww create <name> --auth api-key");
         process.exit(1);
       }
+      warn(`No key injected; ${file} configures Vibe's provider.`);
     }
   },
 };

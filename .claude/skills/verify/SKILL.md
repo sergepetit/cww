@@ -1,0 +1,51 @@
+---
+name: verify
+description: How to verify cww CLI changes end-to-end without touching the developer's real ~/.cww or workspaces — isolated HOME, real Docker daemon, scratch repo, teardown after.
+---
+
+# Verifying cww changes
+
+The surface is the `cww` CLI (`bun src/cli.ts <command>`); no build step.
+
+## Isolated environment
+
+Never run against the real `~/.cww` — create a fake HOME and a scratch repo:
+
+```bash
+S=$(mktemp -d)
+mkdir -p $S/home/.cww $S/repo
+(cd $S/repo && git init -q && git config user.name V && git config user.email v@test.invalid \
+  && echo hi > f && git add . && git commit -qm init \
+  && git remote add origin https://cww-verify.invalid/org/repo.git)
+# Seed config.json (keyed by the repo's realpath) + env + credentials to skip
+# the interactive setup flow; use .invalid hosts so nothing real is reached.
+```
+
+Key gotcha: overriding HOME breaks the Docker CLI's context (it lives in
+`~/.docker`), so every docker call fails on the default socket. Pin the real
+daemon explicitly:
+
+```bash
+export DOCKER_HOST=$(docker context inspect --format '{{.Endpoints.docker.Host}}' $(docker context show))
+```
+
+## Driving
+
+- `HOME=$S/home bun src/cli.ts create $S/repo w1 --no-attach </dev/null` runs
+  a full create against real Docker. The in-container clone of the `.invalid`
+  URL fails fast — expected; the container still comes up (tmux shows the
+  failure log), which is enough to inspect everything.
+- Error paths are cheap: `</dev/null` makes create/auth die at any prompt
+  instead of hanging, so bad flags and missing keys can be probed non-TTY.
+- Inspect: `docker exec <container> env`, the generated files under
+  `$S/home/.cww/tasks/<project>-<ws>/` (session.json, env, compose files).
+  Note `docker exec` shows the container's create-time env; values delivered
+  by the start-time secret refresh only appear in entrypoint-descended
+  processes — check `tr '\0' '\n' < /proc/$(pgrep -o tmux)/environ`.
+- Piping a value into `cww auth` works: `echo tok | HOME=$S/home bun src/cli.ts auth ...`.
+
+## Cleanup
+
+`HOME=$S/home bun src/cli.ts teardown w1 -y`, then confirm with
+`docker ps -a | grep <project>`. The developer's own `cww-*` containers may be
+running — never touch containers you didn't create.

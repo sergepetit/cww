@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { buildRefreshContent, collectRefreshEntries, shellQuote } from "../src/lib/env-refresh";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { allAuthEnvKeys } from "../src/agents/registry";
+import {
+  buildRefreshContent,
+  collectRefreshEntries,
+  sessionAuthKeys,
+  shellQuote,
+  writeTaskEnv,
+} from "../src/lib/env-refresh";
 
 describe("shellQuote", () => {
   test("wraps plain values in single quotes", () => {
@@ -68,5 +78,54 @@ describe("collectRefreshEntries", () => {
 
   test("empty env file and no credential yields nothing to refresh", () => {
     expect(collectRefreshEntries("", ["CLAUDE_CODE_OAUTH_TOKEN"], null)).toEqual({});
+  });
+});
+
+describe("sessionAuthKeys", () => {
+  test("a recorded method narrows the refresh to its single key", () => {
+    expect(sessionAuthKeys({ agent: "claude", auth: "oauth-token" })).toEqual([
+      "CLAUDE_CODE_OAUTH_TOKEN",
+    ]);
+    expect(sessionAuthKeys({ agent: "claude", auth: "api-key" })).toEqual(["ANTHROPIC_API_KEY"]);
+  });
+
+  test("a keyless method refreshes no agent secret at all", () => {
+    expect(sessionAuthKeys({ agent: "claude", auth: "none" })).toEqual([]);
+    expect(sessionAuthKeys({ agent: "vibe", auth: "config-file" })).toEqual([]);
+  });
+
+  test("sessions without a recorded method fall back to the agent's key list", () => {
+    expect(sessionAuthKeys({ agent: "vibe" })).toEqual(["MISTRAL_API_KEY"]);
+    expect(sessionAuthKeys({ agent: "vibe", auth: "no-such-method" })).toEqual(["MISTRAL_API_KEY"]);
+  });
+
+  test("sessions without a usable agent fall back to every agent's keys", () => {
+    expect(sessionAuthKeys({})).toEqual(allAuthEnvKeys());
+    expect(sessionAuthKeys({ agent: "mystery" })).toEqual(allAuthEnvKeys());
+  });
+});
+
+describe("writeTaskEnv", () => {
+  // A URL no stored credential can match (.invalid is reserved), so the test
+  // covers the agent-entry half regardless of the machine's ~/.cww files.
+  const REPO_URL = "https://cww-test.invalid/org/repo.git";
+
+  function tempTaskDir(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-task-"));
+  }
+
+  test("writes the chosen method's key as the task env (mode 600)", () => {
+    const dir = tempTaskDir();
+    writeTaskEnv(dir, REPO_URL, { CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-x" });
+    const file = path.join(dir, "env");
+    expect(fs.readFileSync(file, "utf8")).toBe("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-x\n");
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  test("removes a stale file when there is nothing to carry", () => {
+    const dir = tempTaskDir();
+    fs.writeFileSync(path.join(dir, "env"), "CWW_GIT_USER=old\n");
+    writeTaskEnv(dir, REPO_URL, {});
+    expect(fs.existsSync(path.join(dir, "env"))).toBe(false);
   });
 });

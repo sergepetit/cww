@@ -50,7 +50,7 @@ The one wrinkle is the opt-in [dependency-cache mounts](#dependency-caches-opt-i
 
 ## Authentication setup
 
-You need two things: auth for the agent you use, and a git token. Agent auth lives in `~/.cww/env` (mode 600), which is passed into every container — `install.sh` seeds this file from `examples/cww.env.example` on first install; [`cww auth`](#cww-auth-agentgitkeyvalue-options) writes it for you, or edit it by hand as shown below. The git side is handled by the setup flow the first `cww create` runs (see [point 2](#authentication-setup) below). Both kinds of token expire eventually — see [Renewing a token](#renewing-a-token) for how new values reach existing workspaces.
+You need two things: auth for the agent you use, and a git token. Agent tokens live in `~/.cww/env` (mode 600) — `install.sh` seeds this file from `examples/cww.env.example` on first install; [`cww auth`](#cww-auth-agentgitkeyvalue-options) writes it for you, or edit it by hand as shown below. The file itself never enters a container: each workspace is created with one **auth method** (`cww create --auth <method>`, asked once per project when nothing decides it) and receives **only that method's key** — an `ANTHROPIC_API_KEY` stored for opencode is invisible to your claude workspaces, so it can't silently switch them to metered billing. The git side is handled by the setup flow the first `cww create` runs (see [point 2](#authentication-setup) below). Both kinds of token expire eventually — see [Renewing a token](#renewing-a-token) for how new values reach existing workspaces.
 
 **1a. For the claude agent (the default) — a Claude OAuth token** so Claude Code can run:
 
@@ -63,9 +63,11 @@ echo 'CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...' >> ~/.cww/env
 chmod 600 ~/.cww/env
 ```
 
-The token uses your existing Claude subscription (Pro, Max, etc.) and is the **only** auth the container uses — cww does not copy your host Claude login into the container (as of this writing, a copied credential is unsupported across machines and can silently fall back to metered API billing). `cww create` refuses to launch a claude workspace without the token. Onboarding state and settings are baked into the image, so the container comes up straight at the prompt.
+The token uses your existing Claude subscription (Pro, Max, etc.) and is the **only** auth the container uses — cww does not copy your host Claude login into the container (as of this writing, a copied credential is unsupported across machines and can silently fall back to metered API billing). Onboarding state and settings are baked into the image, so the container comes up straight at the prompt.
 
 The setup-token is **valid for one year**, printed once by `claude setup-token`, and never auto-refreshed; sharing the one token across all your workspaces (and machines) is exactly its documented CI/scripting use. When it expires — or you revoke it — renew with [`cww auth`](#cww-auth-agentgitkeyvalue-options), which offers to run `claude setup-token` for you, prompts for the paste (hidden input), and updates `~/.cww/env` in place. See [Renewing a token](#renewing-a-token) for when existing workspaces pick the new value up.
+
+`oauth-token` is claude's default method. Two explicit alternatives exist: `cww create --auth api-key` runs the workspace on **metered API billing** via an `ANTHROPIC_API_KEY` in `~/.cww/env` (never chosen implicitly just because the key exists), and `--auth none` injects no credential at all — you run `/login` inside the workspace, accepting that the login lives in the container only (kept across stop/start, gone at teardown).
 
 **1b. For the vibe agent — a Mistral API key** so Mistral Vibe can run:
 
@@ -73,18 +75,19 @@ The setup-token is **valid for one year**, printed once by `claude setup-token`,
 echo 'MISTRAL_API_KEY=...' >> ~/.cww/env    # get one at https://console.mistral.ai
 ```
 
-Alternatively, commit a `.vibe/config.toml` to the repo with a `[[providers]]` entry for a local or other OpenAI-compatible endpoint — it rides the clone into the container, and `cww create --agent vibe` then proceeds without the key (with a warning).
+Alternatively (`--auth config-file`), commit a `.vibe/config.toml` to the repo with a `[[providers]]` entry for a local or other OpenAI-compatible endpoint — it rides the clone into the container and no key is injected.
 
-**1c. For the opencode agent — a provider API key.** OpenCode is provider-agnostic and auto-detects whichever key is set; any ONE of these works:
+**1c. For the opencode agent — a provider API key.** OpenCode is provider-agnostic; each method injects its one key:
 
 ```bash
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.cww/env
-# or OPENAI_API_KEY / OPENROUTER_API_KEY / OPENCODE_API_KEY (OpenCode Zen)
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.cww/env    # method anthropic-api-key (the default)
+# or OPENAI_API_KEY / OPENROUTER_API_KEY / OPENCODE_API_KEY (OpenCode Zen) —
+# methods openai-api-key / openrouter-api-key / opencode-api-key
 ```
 
 A Claude Pro/Max subscription can **not** be used — OpenCode removed Claude OAuth login (v1.3.0, per Anthropic's terms), so Anthropic access is metered API billing via `ANTHROPIC_API_KEY`.
 
-Alternatively, run on a **local model** with no key at all, via a custom provider config in a real JSON file — machine-wide in `~/.cww/opencode.json`, or per-project in `<repo>/.cww/opencode.json` (personal and host-side like the rest of `.cww/`, usually gitignored; if both exist the project file wins, with no merging between them). `cww create --agent opencode` validates the file host-side — strict JSON, so a typo fails the create loudly with the file and position instead of a silent in-container exit — injects it into the workspace, and proceeds without a key (with a warning). OpenCode merges it *last*, over the workspace's baked config and over a repo-committed `opencode.json` (committing one is the third, team-level option: it rides the clone into the container). See `examples/opencode.json.example` for a starting point. For a llama.cpp `llama-server` running on the Docker host, the config is:
+Alternatively (`--auth config-file`), run on a **local model** with no key at all, via a custom provider config in a real JSON file — machine-wide in `~/.cww/opencode.json`, or per-project in `<repo>/.cww/opencode.json` (personal and host-side like the rest of `.cww/`, usually gitignored; if both exist the project file wins, with no merging between them). `cww create --agent opencode` validates the file host-side — strict JSON, so a typo fails the create loudly with the file and position instead of a silent in-container exit — and injects it into the workspace. OpenCode merges it *last*, over the workspace's baked config and over a repo-committed `opencode.json` (committing one is the third, team-level option: it rides the clone into the container). See `examples/opencode.json.example` for a starting point. For a llama.cpp `llama-server` running on the Docker host, the config is:
 
 ```json
 {
@@ -103,7 +106,7 @@ Alternatively, run on a **local model** with no key at all, via a custom provide
 
 In `baseURL`, point at the Docker host's **LAN IP** — or better, map a name to it in `~/.cww/hosts` (`llamahost 192.168.1.10`, name first) and use that name, so the JSON never changes when the IP does. Two name pitfalls to avoid: the host's own hostname typically resolves to `127.0.1.1` inside containers (the host's `/etc/hosts` self-entry leaks through Docker's DNS forwarding, and loopback there is the *container*), and the oft-cited `host.docker.internal` + `host-gateway` mapping does **not** work under [rootless Docker](#rootless-docker-recommended) — rootlesskit forwards published ports on the host's real interfaces only, so nothing listens on the gateway IP. Tips: keep the llama-server model id stable across model swaps with `llama-server --alias <id>`, and set the model's `limit.context` to the served `n_ctx` (see `/v1/models`) so OpenCode compacts before overrunning the window.
 
-The file is read at `cww create` time (like `~/.cww/hosts` and `~/.cww/env`): edits apply to the *next* created workspace, not running ones. Legacy escape hatch: a one-line `OPENCODE_CONFIG_CONTENT={...}` in `~/.cww/env` still works when no config file exists — the file wins over it when both are present (cww warns).
+The file is read at `cww create` time (like `~/.cww/hosts` and `~/.cww/env`): edits apply to the *next* created workspace, not running ones. Legacy escape hatch: a one-line `OPENCODE_CONFIG_CONTENT={...}` in `~/.cww/env` still works when no config file exists — cww forwards it into opencode workspaces; the file wins over it when both are present (cww warns).
 
 **2. A git token** so the container can clone the repo — and so you (or the agent) can commit and push over HTTPS from inside it. Nothing to prepare: **the first `cww create` in a repo runs the setup flow** — it shows the clone URL workspaces will use (derived from a remote — accept it, or type the exact URL for a self-hosted forge on plain http or a non-443 port), prompts for your platform login and a token (hidden input), and **validates the pair with a real `git ls-remote` before saving anything**. `cww auth git` re-runs the same flow whenever you need it (token rotation, URL change); `cww init` does too, adding a preflight of everything else a `cww create` needs (docker, agent auth, agent image).
 
@@ -117,7 +120,7 @@ Setup writes two files:
 
   `user:token` is used as HTTP basic auth and works with GitHub (classic/fine-grained PATs), Forgejo, and Gitea — use your **login username** for Forgejo/Gitea, `x-access-token` for GitHub fine-grained/App tokens. Make it a **fine-grained PAT scoped to the one repo** (contents read/write) where the platform supports it; `cww create` injects only the entry matching the workspace's clone URL, so a workspace never sees another repo's token. To share one token across a whole forge, hand-edit the entry down to `https://user:token@host`. Rotating a token = run `cww auth git` (or `cww init`) — see [Renewing a token](#renewing-a-token) for when existing workspaces pick it up.
 
-- `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"`, `"browser"`, and `"skill"` overrides of the `~/.cww/env` globals:
+- `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"`, `"auth"`, `"browser"`, and `"skill"` overrides of the `~/.cww/env` globals (`"auth"` is where `cww create`/`cww init` record the interactively chosen auth method):
 
   ```json
   {
@@ -125,7 +128,8 @@ Setup writes two files:
       "/home/dev/work/api": {
         "repoUrl": "http://forgejo.example:3000/org/api.git",
         "remote": "origin",
-        "agent": "opencode"
+        "agent": "opencode",
+        "auth": "openai-api-key"
       }
     }
   }
@@ -141,8 +145,8 @@ Tokens expire: the Claude setup-token after a year, fine-grained git PATs on wha
 
 When the new value reaches a workspace:
 
-- **Stopped workspace — on its next start.** Every start (`cww start`, or the auto-start in `attach`/`shell`) copies the current secrets — agent tokens from `~/.cww/env` plus the repo's git credential — into the container, and the entrypoint applies them over the create-time values before relaunching the agent.
-- **Running workspace — after a restart.** The agent process holds the env it started with, so run `cww stop` then `cww start` (`cww auth` prints the exact commands for the running workspaces it finds).
+- **Stopped workspace — on its next start.** Every start (`cww start`, or the auto-start in `attach`/`shell`) copies the current secrets — the key of the workspace's own auth method from `~/.cww/env` plus the repo's git credential, nothing else — into the container, and the entrypoint applies them over the create-time values before relaunching the agent. (Workspaces created with a keyless method — `none`, `config-file` — refresh just the git credential.)
+- **Running workspace — after a restart.** The agent process holds the env it started with, so run `cww stop` then `cww start` (`cww auth` prints the exact commands for the running workspaces it finds — only ones whose auth method actually uses the renewed key).
 - **Newly created workspaces** always read the current files.
 
 Only secrets ride this refresh; everything else in `~/.cww/env` (`CWW_AGENT`, `CWW_BROWSER`, ...) keeps applying at create time only.
@@ -161,7 +165,7 @@ A **workspace** is the unit cww manages, identified by a **name you choose** (no
 
 ### `cww init [project-path] [options]`
 
-Explicitly (re)run a repo's setup flow and preflight the machine. The first `cww create` in a repo runs the same setup by itself, so init is for the deliberate cases: changing the clone URL, pinning a per-project agent, or checking a box is ready without creating anything (for token rotation alone, [`cww auth git`](#cww-auth-agentgitkeyvalue-options) is the focused command — same flow, no preflight). It confirms the clone URL (stored in `~/.cww/config.json`), prompts for your git login and token with hidden input, **validates the pair with `git ls-remote` before saving** it to `~/.cww/credentials`, then checks docker, the agent's auth, and the agent image, ending in a ✓/✗ summary. `--remote <name>` derives the URL from a non-origin remote; `--agent <name>` picks which agent to preflight and records it as the project's default. Details in [Authentication setup](#authentication-setup).
+Explicitly (re)run a repo's setup flow and preflight the machine. The first `cww create` in a repo runs the same setup by itself, so init is for the deliberate cases: changing the clone URL, pinning a per-project agent, or checking a box is ready without creating anything (for token rotation alone, [`cww auth git`](#cww-auth-agentgitkeyvalue-options) is the focused command — same flow, no preflight). It confirms the clone URL (stored in `~/.cww/config.json`), prompts for your git login and token with hidden input, **validates the pair with `git ls-remote` before saving** it to `~/.cww/credentials`, resolves the project's auth method (asking and recording it when nothing is configured — the same resolution `cww create` runs), then checks docker, the chosen method's credential, and the agent image, ending in a ✓/✗ summary. `--remote <name>` derives the URL from a non-origin remote; `--agent <name>` picks which agent to preflight and records it as the project's default. Details in [Authentication setup](#authentication-setup).
 
 ```bash
 cww init                       # From within the repo
@@ -172,7 +176,7 @@ cww init --remote upstream     # Clone URL from a different remote
 
 Store or renew a credential — the command behind [Renewing a token](#renewing-a-token). The positional target picks what to update:
 
-- **An agent name** (or nothing — the default agent): the agent's auth token, user-wide in `~/.cww/env`. Prints how to obtain the secret, offers to run the agent's setup command when it's on your PATH (`claude setup-token` for claude), prompts for the paste with hidden input, sanity-checks the value (claude tokens start with `sk-ant-oat01-`), and upserts the line in place — comments and other entries in the file survive. Agents with several possible keys (opencode's provider keys) ask which one, or take `--method <m>` (tab-completes per agent, e.g. `anthropic-api-key`).
+- **An agent name** (or nothing — the default agent): the agent's auth token, user-wide in `~/.cww/env`. Prints how to obtain the secret, offers to run the agent's setup command when it's on your PATH (`claude setup-token` for claude), prompts for the paste with hidden input, sanity-checks the value (claude tokens start with `sk-ant-oat01-`), and upserts the line in place — comments and other entries in the file survive. Agents with several key-storing methods (claude's `oauth-token`/`api-key`, opencode's provider keys) ask which one, or take `--method <m>` (tab-completes per agent, e.g. `anthropic-api-key`); the keyless methods (`none`, `config-file`) store nothing and aren't offered.
 - **`git`**: this repo's git credential in `~/.cww/credentials` — the same prompt-validate-store flow as `cww init` (existing URL and user offered as defaults, `git ls-remote` validation), without init's machine preflight.
 - **`KEY=VALUE`**: non-interactive upsert of one line into `~/.cww/env` — the escape hatch for scripts. A key no agent declares is stored with a warning: such keys reach containers at create time only.
 
@@ -192,6 +196,8 @@ Create a workspace: a fresh container that clones your repo and brings up the ap
 
 `--agent <claude|vibe|opencode>` picks the coding agent (default: the project's `"agent"` in `~/.cww/config.json`, then `CWW_AGENT` from `~/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
 
+`--auth <method>` picks how the workspace's agent authenticates — the workspace receives **exactly that method's credential and nothing else** (see [Authentication setup](#authentication-setup)). Methods per agent: claude `oauth-token | api-key | none`, vibe `api-key | config-file`, opencode `anthropic-api-key | openai-api-key | openrouter-api-key | opencode-api-key | config-file`. Resolution mirrors `--agent`: the flag, then the project's `"auth"` in `~/.cww/config.json`, then `CWW_AUTH` from `~/.cww/env`; with nothing configured, the agent's default method applies when its key is already stored, and otherwise create **asks once** and records the answer in the project's config. If the chosen method's key isn't stored yet, create hands off to the [`cww auth`](#cww-auth-agentgitkeyvalue-options) store flow inline. Like the agent, the method is recorded in the workspace's metadata and survives recreates.
+
 ```bash
 cww create feature-auth               # From within a git repo (workspace named "feature-auth")
 cww create . feature-auth             # Explicit current directory
@@ -199,6 +205,7 @@ cww create /path/to/project bugfix    # With full project path
 cww create review --branch main       # Check out main instead of the host's current branch
 cww create sandbox --agent vibe       # Run Mistral Vibe instead of the default agent
 cww create sandbox --agent opencode   # ... or OpenCode
+cww create metered --auth api-key     # Claude Code on metered API billing (explicit opt-in)
 cww create feature-auth --no-attach   # Create without attaching to tmux
 ```
 
@@ -314,13 +321,14 @@ Your project repo is never modified or used as a worktree. Per-workspace state l
 /path/to/project/              # Your original repo (untouched)
 
 ~/.cww/
-  env                          # Global env forwarded to containers (agent auth, defaults)
+  env                          # Agent tokens + defaults, read host-side (never forwarded whole)
+  services.env                 # (optional) pass-through env loaded into every workspace
   credentials                  # Git tokens, one per repo/host (git-credentials format, mode 600)
-  config.json                  # Per-project settings (clone URL, agent/browser overrides)
+  config.json                  # Per-project settings (clone URL, agent/auth/browser overrides)
   tasks/                       # Global per-workspace metadata (host side)
     myproject-feature-auth/       # One dir per project+workspace
-      session.json             # Workspace metadata (workspace name + checked-out branch)
-      env                      # This repo's git credential, injected into the container (mode 600)
+      session.json             # Workspace metadata (name, branch, agent, auth method)
+      env                      # This repo's git credential + the auth method's key (mode 600)
       docker-compose.yml       # Generated compose file
       docker-compose.hosts.yml # (optional) extra_hosts override
       docker-compose.browser.yml # (unless the browser is off) publishes the built-in browser's noVNC port
@@ -456,9 +464,15 @@ Because the tunnel's local side is the stable container port, you keep **one** b
 |----------|---------|-------------|
 | `CWW_INSTALL_DIR` | `~/.local/share/coder-workspace-workflow` | Installation directory |
 | `CWW_BIN_DIR` | `~/.local/bin` | Launcher directory |
+| `CWW_AGENT` | `claude` | Coding agent for new workspaces (set in `~/.cww/env`; per project use `"agent"` in `~/.cww/config.json`, per create `--agent`) |
+| `CWW_AUTH` | *(agent's default method)* | [Auth method](#authentication-setup) for new workspaces (set in `~/.cww/env`; per project use `"auth"` in `~/.cww/config.json`, per create `--auth`) |
 | `CWW_BROWSER` | `on` | [Built-in headful browser](#built-in-headful-browser) for new workspaces; `off`/`0`/`false`/`no` disables (set in `~/.cww/env`; per project use `"browser"` in `~/.cww/config.json`) |
 | `CWW_SKILL` | `on` | [Built-in workspace skill](#the-built-in-workspace-skill) for new workspaces; `off`/`0`/`false`/`no` disables (set in `~/.cww/env`; per project use `"skill"` in `~/.cww/config.json`) |
 | `CWW_BROWSER_RESOLUTION` | `1920x1080` | Virtual display size of the built-in browser (`<width>x<height>`) |
+
+### Passing env to workspaces
+
+`~/.cww/env` itself never enters a container — each workspace receives only its auth method's key plus the repo's git credential. Env your app or its tooling needs at runtime goes in **`~/.cww/services.env`** (see `examples/services.env.example`), which is loaded verbatim into every workspace container at create time; per-project values fit better as `environment:` entries in the repo's `.cww/docker-compose.services.yml`.
 
 ### Dependency caches (opt-in)
 

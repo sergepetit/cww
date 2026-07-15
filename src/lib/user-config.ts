@@ -9,6 +9,7 @@
 //         "repoUrl": "http://forgejo.example:3000/org/api.git",
 //         "remote": "origin",
 //         "agent": "opencode",
+//         "auth": "openai-api-key",
 //         "browser": "off"
 //       }
 //     }
@@ -18,9 +19,10 @@
 // marker that 'cww create' checks before offering the setup flow. remote
 // records which git remote the URL was captured for, so 'cww create
 // --remote <same>' keeps using the (possibly hand-corrected) repoUrl instead
-// of re-deriving. agent, browser, and skill are optional per-project
-// overrides of the ~/.cww/env globals. Secrets never live here: tokens go in
-// ~/.cww/credentials.
+// of re-deriving. agent, auth, browser, and skill are optional per-project
+// overrides of the ~/.cww/env globals (auth is the method id new workspaces
+// authenticate with — 'cww create' records the interactive answer here).
+// Secrets never live here: tokens go in ~/.cww/credentials and ~/.cww/env.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -31,6 +33,7 @@ export interface ProjectConfig {
   repoUrl?: string;
   remote?: string;
   agent?: string;
+  auth?: string; // auth method id for the project's agent (see agent-env-scoping-plan)
   browser?: string;
   skill?: string;
   [key: string]: unknown; // unknown fields survive a read-modify-write

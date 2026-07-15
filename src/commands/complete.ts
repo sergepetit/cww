@@ -49,6 +49,16 @@ export function runComplete(argv: string[]): void {
       for (const m of agentAuthMethods(agent as Agent)) console.log(m.id);
       break;
     }
+    case "auth-methods-all": {
+      // 'cww create --auth <TAB>' — every agent's method ids (the agent may
+      // not be on the command line yet), deduplicated.
+      const ids = new Set<string>();
+      for (const agent of CWW_AGENTS) {
+        for (const m of agentAuthMethods(agent)) ids.add(m.id);
+      }
+      for (const id of ids) console.log(id);
+      break;
+    }
     default:
       // Unknown topic: exit quietly non-zero — completion scripts treat any
       // failure as "no candidates".

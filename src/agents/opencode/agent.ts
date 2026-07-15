@@ -41,13 +41,20 @@ export function resolveOpencodeConfigFile(
 // repo-committed opencode.json. Invalid JSON dies here, host-side, with the
 // file path and parse position — never a silent in-container exit. Strict
 // JSON only (no JSONC): strictness is what makes the loud failure possible.
+// With no config file, a hand-set OPENCODE_CONFIG_CONTENT line (the legacy
+// escape hatch in ~/.cww/env) is forwarded verbatim — ~/.cww/env itself no
+// longer reaches the container, so this hook is its only ride.
 export function opencodeContainerEnv(
   projectPath: string,
   env: Record<string, string | undefined>,
   home: string = os.homedir(),
 ): Record<string, string> {
   const file = resolveOpencodeConfigFile(projectPath, home);
-  if (!file) return {};
+  if (!file) {
+    return env.OPENCODE_CONFIG_CONTENT
+      ? { OPENCODE_CONFIG_CONTENT: env.OPENCODE_CONFIG_CONTENT }
+      : {};
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -68,12 +75,21 @@ export const opencodeAgent: AgentDefinition<"opencode"> = {
   label: "OpenCode",
 
   // One method per supported provider key (method id = the key, kebab-cased);
-  // OpenCode auto-detects whichever is present at startup.
-  authMethods: PROVIDER_KEYS.map((key) => ({
-    id: key.toLowerCase().replaceAll("_", "-"),
-    envKey: key,
-    instructions: `Get an API key from the provider and copy it (${key}).`,
-  })),
+  // the chosen one is the single key the workspace receives. config-file is
+  // the keyless path: a personal opencode.json (or a repo-committed one)
+  // configures a custom provider.
+  authMethods: [
+    ...PROVIDER_KEYS.map((key) => ({
+      id: key.toLowerCase().replaceAll("_", "-"),
+      envKey: key,
+      label: `${key} (metered API billing with that provider)`,
+      instructions: `Get an API key from the provider and copy it (${key}).`,
+    })),
+    {
+      id: "config-file",
+      label: "No key — an opencode.json config points at a custom/local provider",
+    },
+  ],
 
   // Skills follow the shared Agent Skills format; OpenCode reads
   // ~/.config/opencode/skills/<name>/SKILL.md. commands/agents stay unmapped —
@@ -88,40 +104,39 @@ export const opencodeAgent: AgentDefinition<"opencode"> = {
     return opencodeContainerEnv(projectPath, env);
   },
 
-  preflight(projectPath, env) {
-    if (PROVIDER_KEYS.some((k) => env[k])) return;
-    // Keyless custom providers (e.g. a local llama.cpp server), in the order
-    // the pieces win at runtime: a personal opencode.json config file
-    // (project beats global; parsed host-side and injected by containerEnv
-    // above), inline config in the env (OPENCODE_CONFIG_CONTENT merges into
-    // OpenCode's config chain), or a repo-committed opencode.json that rides
-    // the clone into the container and merges OVER the baked global config.
+  preflight(projectPath, env, method) {
+    // Provider-key methods are guaranteed present by the caller; only the
+    // keyless config-file method has prerequisites of its own. Accepted, in
+    // the order the pieces win at runtime: a personal opencode.json config
+    // file (project beats global; parsed host-side and injected by
+    // containerEnv above), inline config in the env (OPENCODE_CONFIG_CONTENT
+    // merges into OpenCode's config chain), or a repo-committed opencode.json
+    // that rides the clone into the container and merges OVER the baked
+    // global config.
+    if (method.id !== "config-file") return;
     const configFile = resolveOpencodeConfigFile(projectPath);
     if (configFile) {
-      warn(`No LLM provider key set; assuming ${configFile} configures a custom provider.`);
+      warn(`No key injected; ${configFile} configures OpenCode's provider.`);
       return;
     }
     if (env.OPENCODE_CONFIG_CONTENT) {
-      warn("No LLM provider key set; assuming OPENCODE_CONFIG_CONTENT configures a custom provider.");
+      warn("No key injected; OPENCODE_CONFIG_CONTENT configures OpenCode's provider.");
       return;
     }
     const committed = ["opencode.json", "opencode.jsonc"].find((f) =>
       fs.existsSync(path.join(projectPath, f)),
     );
     if (committed) {
-      warn(`No LLM provider key set; assuming ${projectPath}/${committed} configures a custom provider.`);
+      warn(`No key injected; ${projectPath}/${committed} configures OpenCode's provider.`);
       return;
     }
-    error("No LLM provider key found (checked ~/.cww/env and the environment).");
-    console.error("  OpenCode in the container needs one of:");
-    console.error("    ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, OPENCODE_API_KEY");
-    console.error("  Note: a Claude Pro/Max subscription can NOT be used — OpenCode removed");
-    console.error("  Claude OAuth login; metered API billing applies. Either add a key:");
-    console.error("    echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.cww/env");
-    console.error("  or configure a local/alternate OpenAI-compatible endpoint (e.g. llama.cpp)");
+    error("Auth method 'config-file' selected, but no OpenCode config was found.");
+    console.error("  Configure a local/alternate OpenAI-compatible endpoint (e.g. llama.cpp)");
     console.error("  with a \"provider\" entry in ~/.cww/opencode.json (machine-wide) or");
     console.error("  <repo>/.cww/opencode.json (per-project) — see examples/opencode.json.example —");
-    console.error("  or in an opencode.json committed to the repo.");
+    console.error("  or in an opencode.json committed to the repo. To use a provider API key");
+    console.error("  instead, pick that method:");
+    console.error("    cww create <name> --auth anthropic-api-key   # or openai-api-key, ...");
     process.exit(1);
   },
 };

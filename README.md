@@ -42,7 +42,7 @@ EOF
 chmod 600 ~/.cww/env
 ```
 
-For Mistral Vibe, set `MISTRAL_API_KEY=...` instead; for OpenCode, a provider API key such as `ANTHROPIC_API_KEY` (see [Choosing an agent](#choosing-an-agent)). The Claude token lasts a year; renew any agent token later with `cww auth` — existing workspaces pick the new value up on their next start ([details](docs/user-guide.md#renewing-a-token)).
+For Mistral Vibe, set `MISTRAL_API_KEY=...` instead; for OpenCode, a provider API key such as `ANTHROPIC_API_KEY` (see [Choosing an agent](#choosing-an-agent)). Each workspace receives only the credential of the **auth method** it is created with (`cww create --auth <method>`, asked once per project when nothing decides it) — keys stored for one agent are invisible to workspaces of another. The Claude token lasts a year; renew any agent token later with `cww auth` — existing workspaces pick the new value up on their next start ([details](docs/user-guide.md#renewing-a-token)).
 
 The installer also sets up tab completion (bash and zsh) for commands, flags, and workspace names — open a new shell to pick it up.
 
@@ -96,7 +96,7 @@ The agent is picked **per workspace** at create time and remembered for the work
 cww create sandbox --agent vibe   # this workspace runs Mistral Vibe
 ```
 
-The default is `claude`; change it globally with `CWW_AGENT=vibe` in `~/.cww/env`, or per project with an `"agent"` entry in `~/.cww/config.json`. Each agent has its own image (`cww build vibe`), built on demand at first use. Auth lives in `~/.cww/env`: `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code, `MISTRAL_API_KEY` for Vibe, and for OpenCode any one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` (it auto-detects whichever is set; a Claude Pro/Max subscription can't be used — OpenCode removed Claude OAuth login). Alternatively, commit a config to the repo to point the agent at a local/alternate OpenAI-compatible endpoint instead: `.vibe/config.toml` for Vibe, `opencode.json` for OpenCode (see [the User Guide](docs/user-guide.md#authentication-setup) for a llama.cpp example).
+The default is `claude`; change it globally with `CWW_AGENT=vibe` in `~/.cww/env`, or per project with an `"agent"` entry in `~/.cww/config.json`. Each agent has its own image (`cww build vibe`), built on demand at first use. Auth tokens live in `~/.cww/env`, and each workspace gets exactly the one its auth method names (`--auth`): `oauth-token` (`CLAUDE_CODE_OAUTH_TOKEN`), `api-key`, or `none` for Claude Code; `api-key` (`MISTRAL_API_KEY`) for Vibe; one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `OPENCODE_API_KEY` for OpenCode (a Claude Pro/Max subscription can't be used — OpenCode removed Claude OAuth login). Alternatively (`--auth config-file`), commit a config to the repo to point the agent at a local/alternate OpenAI-compatible endpoint instead: `.vibe/config.toml` for Vibe, `opencode.json` for OpenCode (see [the User Guide](docs/user-guide.md#authentication-setup) for a llama.cpp example).
 
 Need extra languages or tools baked into the container itself? Edit the shared base image in `docker/base/Dockerfile` (or a single agent's `src/agents/<name>/Dockerfile`) and run `cww build` — see [Docker image](docs/user-guide.md#docker-image).
 

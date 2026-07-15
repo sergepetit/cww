@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { getCwwDir } from "../src/agents/registry";
 import {
   declaredCacheDirs,
   generateAgentEnvOverride,
@@ -9,6 +10,44 @@ import {
 } from "../src/commands/create";
 import { parseHostsEntries } from "../src/lib/hosts";
 import { containerHostname } from "../src/lib/naming";
+
+describe("compose template placeholders", () => {
+  test("every {{PLACEHOLDER}} in the template is one generateCompose fills", () => {
+    const template = fs.readFileSync(
+      path.join(getCwwDir(), "templates", "docker-compose.yml.template"),
+      "utf8",
+    );
+    // Must match the vars generateCompose passes to renderTemplate — a
+    // placeholder outside this list would survive rendering verbatim.
+    const filled = [
+      "TASK_DIR",
+      "CONTAINER_NAME",
+      "CONTAINER_HOSTNAME",
+      "CWW_IMAGE",
+      "WORKSPACE_NAME",
+      "BRANCH_NAME",
+      "REPO_URL",
+      "GIT_AUTHOR_NAME",
+      "GIT_AUTHOR_EMAIL",
+      "CWW_BROWSER",
+      "CWW_BROWSER_RESOLUTION",
+      "HOME",
+    ];
+    for (const p of template.match(/\{\{[A-Z_]+\}\}/g) ?? []) {
+      expect(filled).toContain(p.slice(2, -2));
+    }
+  });
+
+  test("the global ~/.cww/env is no longer an env_file (agent-env scoping)", () => {
+    const template = fs.readFileSync(
+      path.join(getCwwDir(), "templates", "docker-compose.yml.template"),
+      "utf8",
+    );
+    expect(template).not.toContain("{{HOME}}/.cww/env");
+    expect(template).toContain("{{HOME}}/.cww/services.env");
+    expect(template).toContain("{{TASK_DIR}}/env");
+  });
+});
 
 describe("containerHostname", () => {
   test("passes short names through", () => {

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  agentAuthEnvKeys,
   agentAuthMethods,
   agentBuildPlan,
   agentContainerEnv,
@@ -12,6 +13,7 @@ import {
   BUILTIN_SKILL_REFERENCES,
   builtinSkillPlan,
   CWW_AGENTS,
+  findAuthMethod,
   getCwwDir,
   personalAssetPlan,
   resolveAgent,
@@ -78,39 +80,67 @@ describe("agentLabel / agentImage", () => {
 });
 
 describe("authMethods", () => {
-  test("every agent declares at least one method, with unique ids", () => {
+  test("every agent declares at least one method, with unique ids and valid keys", () => {
     for (const agent of CWW_AGENTS) {
       const methods = agentAuthMethods(agent);
       expect(methods.length).toBeGreaterThan(0);
       expect(new Set(methods.map((m) => m.id)).size).toBe(methods.length);
       for (const m of methods) {
-        expect(m.envKey).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
+        if (m.envKey !== undefined) expect(m.envKey).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
       }
     }
   });
 
-  test("the known credentials are declared where expected", () => {
-    expect(agentAuthMethods("claude").map((m) => m.envKey)).toEqual(["CLAUDE_CODE_OAUTH_TOKEN"]);
-    expect(agentAuthMethods("vibe").map((m) => m.envKey)).toEqual(["MISTRAL_API_KEY"]);
-    expect(agentAuthMethods("opencode").map((m) => m.envKey)).toEqual([
-      "ANTHROPIC_API_KEY",
-      "OPENAI_API_KEY",
-      "OPENROUTER_API_KEY",
-      "OPENCODE_API_KEY",
+  test("the first method (the default) always carries an env key", () => {
+    // The resolution auto-picks the default only when its key is stored; a
+    // keyless default would silently pick itself.
+    for (const agent of CWW_AGENTS) {
+      expect(agentAuthMethods(agent)[0]?.envKey).toBeTruthy();
+    }
+  });
+
+  test("the known methods are declared where expected", () => {
+    expect(agentAuthMethods("claude").map((m) => [m.id, m.envKey])).toEqual([
+      ["oauth-token", "CLAUDE_CODE_OAUTH_TOKEN"],
+      ["api-key", "ANTHROPIC_API_KEY"],
+      ["none", undefined],
     ]);
+    expect(agentAuthMethods("vibe").map((m) => [m.id, m.envKey])).toEqual([
+      ["api-key", "MISTRAL_API_KEY"],
+      ["config-file", undefined],
+    ]);
+    expect(agentAuthMethods("opencode").map((m) => [m.id, m.envKey])).toEqual([
+      ["anthropic-api-key", "ANTHROPIC_API_KEY"],
+      ["openai-api-key", "OPENAI_API_KEY"],
+      ["openrouter-api-key", "OPENROUTER_API_KEY"],
+      ["opencode-api-key", "OPENCODE_API_KEY"],
+      ["config-file", undefined],
+    ]);
+  });
+
+  test("agentAuthEnvKeys drops keyless methods", () => {
+    expect(agentAuthEnvKeys("claude")).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]);
+    expect(agentAuthEnvKeys("vibe")).toEqual(["MISTRAL_API_KEY"]);
+  });
+
+  test("findAuthMethod resolves by id, null on unknown", () => {
+    expect(findAuthMethod("claude", "api-key")?.envKey).toBe("ANTHROPIC_API_KEY");
+    expect(findAuthMethod("claude", "nope")).toBeNull();
   });
 
   test("allAuthEnvKeys is the deduplicated union across agents", () => {
     const keys = allAuthEnvKeys();
     expect(new Set(keys).size).toBe(keys.length);
-    expect(keys).toEqual([
-      "CLAUDE_CODE_OAUTH_TOKEN",
-      "MISTRAL_API_KEY",
-      "ANTHROPIC_API_KEY",
-      "OPENAI_API_KEY",
-      "OPENROUTER_API_KEY",
-      "OPENCODE_API_KEY",
-    ]);
+    expect(keys.sort()).toEqual(
+      [
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "MISTRAL_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "OPENCODE_API_KEY",
+      ].sort(),
+    );
   });
 });
 
@@ -256,6 +286,13 @@ describe("opencode config file", () => {
     expect(opencodeContainerEnv(dirWithConfig(), {}, dirWithConfig())).toEqual({});
   });
 
+  test("no config file forwards a hand-set OPENCODE_CONFIG_CONTENT (its only ride into the container)", () => {
+    const env = { OPENCODE_CONFIG_CONTENT: '{"model":"x"}' };
+    expect(opencodeContainerEnv(dirWithConfig(), env, dirWithConfig())).toEqual({
+      OPENCODE_CONFIG_CONTENT: '{"model":"x"}',
+    });
+  });
+
   test("warns when a hand-set OPENCODE_CONFIG_CONTENT would be overridden by the file", () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     try {
@@ -294,12 +331,13 @@ describe("opencode config file", () => {
     expect(agentContainerEnv("vibe", project, {})).toEqual({});
   });
 
-  test("preflight accepts the config file as keyless auth (warn-and-continue)", () => {
+  test("preflight of the config-file method accepts the config file (warn-and-continue)", () => {
     const project = dirWithConfig(CONFIG);
+    const configFileMethod = opencodeAgent.authMethods.find((m) => m.id === "config-file")!;
     const log = spyOn(console, "log").mockImplementation(() => {});
     try {
       // Would process.exit(1) without an accepter; returning means accepted.
-      expect(opencodeAgent.preflight(project, {})).toBeUndefined();
+      expect(opencodeAgent.preflight(project, {}, configFileMethod)).toBeUndefined();
       const output = log.mock.calls.flat().join("\n");
       expect(output).toContain(path.join(project, ".cww", "opencode.json"));
     } finally {

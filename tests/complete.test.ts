@@ -48,7 +48,24 @@ describe("auth topics", () => {
       stdout: "pipe",
     });
     expect(r.exitCode).toBe(0);
-    expect(new TextDecoder().decode(r.stdout).trim().split("\n")).toEqual(["oauth-token"]);
+    expect(new TextDecoder().decode(r.stdout).trim().split("\n")).toEqual([
+      "oauth-token",
+      "api-key",
+      "none",
+    ]);
+  });
+
+  test("auth-methods-all is the deduplicated union of every agent's method ids", () => {
+    const r = Bun.spawnSync({
+      cmd: ["bun", cli, "__complete", "auth-methods-all"],
+      stdout: "pipe",
+    });
+    expect(r.exitCode).toBe(0);
+    const ids = new TextDecoder().decode(r.stdout).trim().split("\n");
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ["oauth-token", "api-key", "none", "config-file", "anthropic-api-key"]) {
+      expect(ids).toContain(id);
+    }
   });
 
   test("auth-methods without a known agent yields no candidates", () => {

@@ -11,6 +11,7 @@ export interface Session {
   workspace?: string;
   branch?: string;
   agent?: string;
+  auth?: string; // the auth method id the workspace was created with
   container?: string;
   created?: string;
   mainRepo?: string;

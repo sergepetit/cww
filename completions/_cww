@@ -46,6 +46,14 @@ _cww_auth_methods() {
   (( ${#names} )) && _describe -t methods 'method' names
 }
 
+# 'cww create --auth' — the agent may not be on the line yet, so offer every
+# agent's method ids.
+_cww_auth_methods_all() {
+  local -a names
+  names=(${(f)"$(cww __complete auth-methods-all 2>/dev/null)"})
+  (( ${#names} )) && _describe -t methods 'method' names
+}
+
 _cww() {
   local -a commands=(
     'init:Set a repo up for cww (store git credential, preflight checks)'
@@ -84,6 +92,7 @@ _cww() {
             '--branch[branch to check out inside the workspace]:ref:' \
             '--ref[alias for --branch]:ref:' \
             '--agent[coding agent to run in the workspace]:agent:_cww_agents' \
+            "--auth[auth method the workspace's agent uses]:method:_cww_auth_methods_all" \
             '--remote[git remote whose URL the workspace clones]:remote:_cww_remotes' \
             '--no-attach[do not attach to tmux after creating]' \
             $help_opt \

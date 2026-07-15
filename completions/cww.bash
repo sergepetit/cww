@@ -47,6 +47,11 @@ _cww() {
             COMPREPLY=($(compgen -W "$(cww __complete auth-methods "${words[2]}" 2>/dev/null)" -- "$cur"))
             return
             ;;
+        --auth)
+            # The agent may not be on the line yet: offer every agent's methods.
+            COMPREPLY=($(compgen -W "$(cww __complete auth-methods-all 2>/dev/null)" -- "$cur"))
+            return
+            ;;
         --remote)
             COMPREPLY=($(compgen -W "$(git remote 2>/dev/null)" -- "$cur"))
             return
@@ -60,7 +65,7 @@ _cww() {
     if [[ $cur == -* ]]; then
         local flags="-h --help"
         case $cmd in
-            create)                flags="--branch --ref --agent --remote --no-attach -h --help" ;;
+            create)                flags="--branch --ref --agent --auth --remote --no-attach -h --help" ;;
             init)                  flags="--remote --agent -h --help" ;;
             auth)                  flags="--method -h --help" ;;
             teardown|down)         flags="-y --yes -h --help" ;;

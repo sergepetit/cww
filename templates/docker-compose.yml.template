@@ -15,11 +15,14 @@ services:
     # generated docker-compose.browser.yml override, not here.
     init: true
     shm_size: "2gb"
-    # Auth env for the container. The global env carries agent auth; the
-    # task-dir env is this repo's git credential, written by 'cww create'
-    # from ~/.cww/credentials. Both user-owned, mode 600.
+    # Auth env for the container. The task-dir env (written by 'cww create',
+    # user-owned, mode 600) carries exactly two credentials: this repo's git
+    # token from ~/.cww/credentials, and the single key of the workspace's
+    # chosen auth method from ~/.cww/env — never the whole global env file.
+    # The optional services env is the pass-through for anything the app's
+    # own services need; everything in it reaches this container verbatim.
     env_file:
-      - path: {{HOME}}/.cww/env
+      - path: {{HOME}}/.cww/services.env
         required: false
       - path: {{TASK_DIR}}/env
         required: false
@@ -31,9 +34,10 @@ services:
       - GIT_AUTHOR_NAME={{GIT_AUTHOR_NAME}}
       - GIT_AUTHOR_EMAIL={{GIT_AUTHOR_EMAIL}}
       - CWW_BROWSER={{CWW_BROWSER}}
+      - CWW_BROWSER_RESOLUTION={{CWW_BROWSER_RESOLUTION}}
       - TERM=xterm-256color
     # Nothing is mounted from the host: the repo is cloned into /workspace by
-    # the entrypoint (self-contained .git), agent auth arrives via the env_file
-    # (CLAUDE_CODE_OAUTH_TOKEN / MISTRAL_API_KEY / a provider API key for
-    # opencode), and the agent's onboarding stub + settings are baked into the
-    # per-agent image.
+    # the entrypoint (self-contained .git), agent auth arrives via the
+    # task-dir env_file (the chosen method's key, e.g. CLAUDE_CODE_OAUTH_TOKEN),
+    # and the agent's onboarding stub + settings are baked into the per-agent
+    # image.

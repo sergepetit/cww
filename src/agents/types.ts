@@ -17,14 +17,19 @@ export const PERSONAL_ASSET_KINDS = ["skills", "commands", "agents"] as const;
 export type PersonalAssetKind = (typeof PERSONAL_ASSET_KINDS)[number];
 
 // One way an agent can authenticate: the method id follows the vocabulary of
-// docs/agent-env-scoping-plan.md (oauth-token, api-key, ...), envKey is the
-// variable carrying the secret. 'cww auth' walks the user through storing it
-// (instructions/setupCommand/valuePrefix drive its prompts), and the
+// docs/agent-env-scoping-plan.md (oauth-token, api-key, none, config-file,
+// ...), envKey is the variable carrying the secret. A workspace is created
+// with exactly ONE method — its envKey is the only agent credential the
+// container ever sees (docs/agent-env-scoping-plan.md). Methods without an
+// envKey (none, config-file) inject nothing; the agent authenticates some
+// other way. 'cww auth' walks the user through storing an envKey method's
+// secret (instructions/setupCommand/valuePrefix drive its prompts), and the
 // secret-refresh on workspace start (src/lib/env-refresh.ts) derives its key
-// list from these declarations.
+// from the method recorded in the workspace's session.
 export interface AgentAuthMethod {
   id: string; // e.g. "oauth-token", "anthropic-api-key"
-  envKey: string; // e.g. "CLAUDE_CODE_OAUTH_TOKEN"
+  envKey?: string; // e.g. "CLAUDE_CODE_OAUTH_TOKEN"; absent = injects no credential
+  label?: string; // one-line description for the create-time method picker
   instructions?: string; // how to obtain the secret, printed before the paste prompt
   setupCommand?: readonly string[]; // host command that mints it, offered when on PATH
   valuePrefix?: string; // expected value prefix; mismatch warns before storing
@@ -34,15 +39,24 @@ export interface AgentDefinition<Id extends string = string> {
   id: Id; // e.g. "claude" — also the image tag suffix and Dockerfile folder
   label: string; // human-facing name, e.g. "Claude Code"
 
-  // Auth methods this agent supports; first entry is the default 'cww auth'
-  // offers. preflight() below stays the authority on what a create requires —
-  // these declarations feed 'cww auth' and the start-time secret refresh.
+  // Auth methods this agent supports; the first entry is the default — both
+  // for 'cww auth' and for 'cww create's method resolution (which auto-picks
+  // the default only when its envKey is already set; anything else is an
+  // explicit choice — see src/lib/auth-flow.ts).
   authMethods: readonly AgentAuthMethod[];
 
-  // Auth preflight before a container is (re)created: fail fast (process.exit)
-  // with instructions when the agent's credentials are missing, rather than
-  // dropping the user into an in-container login screen.
-  preflight(projectPath: string, env: Record<string, string | undefined>): void;
+  // Auth preflight for the CHOSEN method before a container is (re)created:
+  // fail fast (process.exit) with instructions when the method's
+  // prerequisites are missing, rather than dropping the user into a broken
+  // workspace. The generic "envKey missing" case is handled by the caller
+  // before this runs (interactive store flow, or die without a TTY) — this
+  // hook covers what only the agent knows: config-file existence, keyless
+  // caveats, method-specific notes.
+  preflight(
+    projectPath: string,
+    env: Record<string, string | undefined>,
+    method: AgentAuthMethod,
+  ): void;
 
   // Which personal .cww/<kind> folders this agent consumes, and where each
   // lands in the container. The registry copies mapped kinds and prints a

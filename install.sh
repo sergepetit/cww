@@ -256,7 +256,7 @@ case "${SHELL:-}" in
         ;;
 esac
 
-# Seed the per-user env file (git credential) from the template, without
+# Seed the per-user env file (agent auth) from the template, without
 # clobbering an existing one.
 ENV_FILE="$HOME/.cww/env"
 ENV_SEEDED=false
@@ -272,19 +272,18 @@ echo ""
 echo "════════════════════════════════════════════════════════════"
 success "Installation complete!"
 echo ""
-echo "Before first use — set your git credential so the container can clone/push:"
+echo "Before first use — store the auth token for the coding agent you use:"
 if [[ "$ENV_SEEDED" == "true" ]]; then
-    echo "  A template was created at ~/.cww/env (mode 600). Edit it and set:"
-else
-    echo "  Edit ~/.cww/env (chmod 600) and set:"
+    echo "  A template was created at ~/.cww/env (mode 600)."
 fi
-echo "    CWW_GIT_USER   - your platform login (REQUIRED for Forgejo/Gitea)"
-echo "    CWW_GIT_TOKEN  - a token with repository Read+Write, scoped as tightly"
-echo "                     as your host allows"
-echo "  Forgejo: Settings → Applications → Access Tokens, permission"
-echo "           repository = Read and Write. Newer versions can also limit the"
-echo "           token to Specific repositories; if yours can't, use a dedicated"
-echo "           machine account for single-repo isolation."
+echo "  Run 'cww auth' to store the token in ~/.cww/env"
+echo "  (Claude Code: 'claude setup-token' -> CLAUDE_CODE_OAUTH_TOKEN)."
+echo "  Each workspace receives only the credential of the auth method it is"
+echo "  created with ('cww create --auth <method>')."
+echo ""
+echo "  The git credential is captured separately by the setup flow the first"
+echo "  'cww create' runs in a repo — a token with repository Read+Write, scoped"
+echo "  as tightly as your host allows, validated and stored in ~/.cww/credentials."
 echo "  Full notes: $INSTALL_DIR/examples/cww.env.example"
 echo ""
 echo "Quick start:"
