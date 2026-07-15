@@ -18,7 +18,7 @@ _cww() {
         cword=$COMP_CWORD
     fi
 
-    local commands="init create teardown attach shell start stop reset list tunnel-command cache build help version"
+    local commands="init auth create teardown attach shell start stop reset list tunnel-command cache build help version"
     local presets="npm m2 ivy2 sbt coursier gradle"
 
     if [[ $cword -eq 1 ]]; then
@@ -42,6 +42,11 @@ _cww() {
             # Free-form values (branch completion deliberately not offered).
             return
             ;;
+        --method)
+            # Methods depend on the agent given as the first positional.
+            COMPREPLY=($(compgen -W "$(cww __complete auth-methods "${words[2]}" 2>/dev/null)" -- "$cur"))
+            return
+            ;;
         --remote)
             COMPREPLY=($(compgen -W "$(git remote 2>/dev/null)" -- "$cur"))
             return
@@ -57,6 +62,7 @@ _cww() {
         case $cmd in
             create)                flags="--branch --ref --agent --remote --no-attach -h --help" ;;
             init)                  flags="--remote --agent -h --help" ;;
+            auth)                  flags="--method -h --help" ;;
             teardown|down)         flags="-y --yes -h --help" ;;
             list|ls)               flags="--json -h --help" ;;
             tunnel-command|tunnel) flags="--host -h --help" ;;
@@ -72,6 +78,9 @@ _cww() {
             ;;
         build)
             COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null) all" -- "$cur"))
+            ;;
+        auth)
+            COMPREPLY=($(compgen -W "$(cww __complete auth-targets 2>/dev/null)" -- "$cur"))
             ;;
         cache)
             COMPREPLY=($(compgen -W "$presets" -- "$cur"))

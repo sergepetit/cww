@@ -42,7 +42,7 @@ EOF
 chmod 600 ~/.cww/env
 ```
 
-For Mistral Vibe, set `MISTRAL_API_KEY=...` instead; for OpenCode, a provider API key such as `ANTHROPIC_API_KEY` (see [Choosing an agent](#choosing-an-agent)).
+For Mistral Vibe, set `MISTRAL_API_KEY=...` instead; for OpenCode, a provider API key such as `ANTHROPIC_API_KEY` (see [Choosing an agent](#choosing-an-agent)). The Claude token lasts a year; renew any agent token later with `cww auth` — existing workspaces pick the new value up on their next start ([details](docs/user-guide.md#renewing-a-token)).
 
 The installer also sets up tab completion (bash and zsh) for commands, flags, and workspace names — open a new shell to pick it up.
 

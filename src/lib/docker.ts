@@ -8,6 +8,7 @@ import path from "node:path";
 // -> agent modules; this file -> registry), so a module-eval-time read could
 // hit a partially initialized module.
 import { CWW_AGENTS } from "../agents/registry";
+import { hardenRefreshFile, refreshWorkspaceSecrets } from "./env-refresh";
 import { error, info } from "./ui";
 
 // docker --format templates are interpolated so Bun Shell never parses their
@@ -35,12 +36,15 @@ export async function findWorkspaceContainer(sanitizedWorkspace: string): Promis
   return r.text().split("\n").find((name) => re.test(name)) ?? null;
 }
 
-// Bring a stopped workspace back up on the way into attach/shell. 'cww stop'
-// stops the whole compose stack, so restart the whole stack — otherwise the
-// agent comes back up with its services (DB, etc.) still down. Fall back to
-// the agent container alone when the compose files are gone (e.g. the
-// pattern-matched path, with no task dir).
+// Bring a stopped workspace back up ('cww start', and on the way into
+// attach/shell). 'cww stop' stops the whole compose stack, so restart the
+// whole stack — otherwise the agent comes back up with its services (DB,
+// etc.) still down. Fall back to the agent container alone when the compose
+// files are gone (e.g. the pattern-matched path, with no task dir). Current
+// secrets are copied in first, so the restarted agent picks up tokens
+// rotated since the container was created (see env-refresh.ts).
 export async function startTaskStack(taskDir: string | null, container: string): Promise<void> {
+  await refreshWorkspaceSecrets(taskDir, container);
   if (taskDir && fs.existsSync(path.join(taskDir, "docker-compose.yml"))) {
     info("Stack is stopped. Starting container and services...");
     if ((await taskCompose(taskDir, ["start"])) !== 0) {
@@ -50,6 +54,7 @@ export async function startTaskStack(taskDir: string | null, container: string):
     info("Container is stopped. Starting...");
     await $`docker start ${container}`;
   }
+  await hardenRefreshFile(container);
 }
 
 export interface PortBinding {

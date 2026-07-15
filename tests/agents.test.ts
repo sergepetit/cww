@@ -3,10 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  agentAuthMethods,
   agentBuildPlan,
   agentContainerEnv,
   agentImage,
   agentLabel,
+  allAuthEnvKeys,
   BUILTIN_SKILL_REFERENCES,
   builtinSkillPlan,
   CWW_AGENTS,
@@ -72,6 +74,43 @@ describe("agentLabel / agentImage", () => {
     expect(agentImage("claude")).toBe("coder-workspace-workflow:claude");
     expect(agentImage("vibe")).toBe("coder-workspace-workflow:vibe");
     expect(agentImage("opencode")).toBe("coder-workspace-workflow:opencode");
+  });
+});
+
+describe("authMethods", () => {
+  test("every agent declares at least one method, with unique ids", () => {
+    for (const agent of CWW_AGENTS) {
+      const methods = agentAuthMethods(agent);
+      expect(methods.length).toBeGreaterThan(0);
+      expect(new Set(methods.map((m) => m.id)).size).toBe(methods.length);
+      for (const m of methods) {
+        expect(m.envKey).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
+      }
+    }
+  });
+
+  test("the known credentials are declared where expected", () => {
+    expect(agentAuthMethods("claude").map((m) => m.envKey)).toEqual(["CLAUDE_CODE_OAUTH_TOKEN"]);
+    expect(agentAuthMethods("vibe").map((m) => m.envKey)).toEqual(["MISTRAL_API_KEY"]);
+    expect(agentAuthMethods("opencode").map((m) => m.envKey)).toEqual([
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "OPENCODE_API_KEY",
+    ]);
+  });
+
+  test("allAuthEnvKeys is the deduplicated union across agents", () => {
+    const keys = allAuthEnvKeys();
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toEqual([
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "MISTRAL_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "OPENCODE_API_KEY",
+    ]);
   });
 });
 

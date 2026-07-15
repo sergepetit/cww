@@ -10,6 +10,14 @@ export const vibeAgent: AgentDefinition<"vibe"> = {
   id: "vibe",
   label: "Mistral Vibe",
 
+  authMethods: [
+    {
+      id: "api-key",
+      envKey: "MISTRAL_API_KEY",
+      instructions: "Get an API key at https://console.mistral.ai and copy it.",
+    },
+  ],
+
   // Skills follow the shared Agent Skills format; Vibe reads ~/.vibe/skills,
   // and a skill with `user-invocable: true` doubles as a slash command.
   // commands/agents stay unmapped — those are Claude Code file formats

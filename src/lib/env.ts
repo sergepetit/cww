@@ -28,6 +28,33 @@ export function parseEnvFile(text: string): Record<string, string> {
   return out;
 }
 
+// Replace (or append) KEY's line in an env-file text, preserving every other
+// line — comments, blanks, ordering — verbatim. The first matching line is
+// rewritten in place (keeping an `export ` prefix); duplicate assignments of
+// the same key are dropped. Used by 'cww auth' to upsert a token into
+// ~/.cww/env without clobbering the user's hand-written file. The key must
+// already be validated ([A-Za-z_][A-Za-z0-9_]*) — it is interpolated into a
+// regex. The value is written raw (no quoting), like the file's own format.
+export function upsertEnvLine(text: string, key: string, value: string): string {
+  const lines = text === "" ? [] : text.replace(/\n$/, "").split("\n");
+  const re = new RegExp(`^\\s*(export\\s+)?${key}=`);
+  const out: string[] = [];
+  let replaced = false;
+  for (const line of lines) {
+    const m = line.match(re);
+    if (!m) {
+      out.push(line);
+      continue;
+    }
+    if (!replaced) {
+      out.push(`${m[1] ?? ""}${key}=${value}`);
+      replaced = true;
+    }
+  }
+  if (!replaced) out.push(`${key}=${value}`);
+  return `${out.join("\n")}\n`;
+}
+
 // Apply an env file to process.env (silently a no-op when the file is absent).
 export function loadEnvFile(
   file: string,

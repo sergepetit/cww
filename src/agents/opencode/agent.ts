@@ -67,6 +67,14 @@ export const opencodeAgent: AgentDefinition<"opencode"> = {
   id: "opencode",
   label: "OpenCode",
 
+  // One method per supported provider key (method id = the key, kebab-cased);
+  // OpenCode auto-detects whichever is present at startup.
+  authMethods: PROVIDER_KEYS.map((key) => ({
+    id: key.toLowerCase().replaceAll("_", "-"),
+    envKey: key,
+    instructions: `Get an API key from the provider and copy it (${key}).`,
+  })),
+
   // Skills follow the shared Agent Skills format; OpenCode reads
   // ~/.config/opencode/skills/<name>/SKILL.md. commands/agents stay unmapped —
   // those are Claude Code file formats; OpenCode's markdown agents/commands

@@ -72,7 +72,9 @@ question is a cww command, say so explicitly as: *"on your host machine, run
 | a plain shell in this container | `cww shell $CWW_WORKSPACE` |
 | pause / resume the workspace | `cww stop` / `cww start` |
 | delete the workspace | `cww teardown $CWW_WORKSPACE` — destructive; remind them to push first |
-| rotate the git token, change the clone URL | `cww init` in the repo |
+| rotate the git token | `cww auth git` in the repo, then `cww stop` + `cww start` this workspace |
+| the agent's own token expired / was renewed | `cww auth`, then `cww stop` + `cww start` this workspace |
+| change the clone URL | `cww init` in the repo |
 | speed up dependency installs across workspaces | `cww cache <preset>` (e.g. `npm`, `m2`, `gradle`) |
 
 Command details, options, and troubleshooting: `references/user-guide.md`.

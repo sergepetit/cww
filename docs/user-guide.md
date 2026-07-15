@@ -2,7 +2,7 @@
 type: guide
 title: cww User Guide
 description: Full user documentation — installation, authentication, every command, the Docker image, project services, the built-in browser, configuration, and troubleshooting
-timestamp: 2026-07-14
+timestamp: 2026-07-15
 ---
 
 # cww User Guide
@@ -50,7 +50,7 @@ The one wrinkle is the opt-in [dependency-cache mounts](#dependency-caches-opt-i
 
 ## Authentication setup
 
-You need two things: auth for the agent you use, and a git token. Agent auth lives in `~/.cww/env` (mode 600), which is passed into every container — `install.sh` seeds this file from `examples/cww.env.example` on first install. The git side is handled by the setup flow the first `cww create` runs (see [point 2](#authentication-setup) below).
+You need two things: auth for the agent you use, and a git token. Agent auth lives in `~/.cww/env` (mode 600), which is passed into every container — `install.sh` seeds this file from `examples/cww.env.example` on first install; [`cww auth`](#cww-auth-agentgitkeyvalue-options) writes it for you, or edit it by hand as shown below. The git side is handled by the setup flow the first `cww create` runs (see [point 2](#authentication-setup) below). Both kinds of token expire eventually — see [Renewing a token](#renewing-a-token) for how new values reach existing workspaces.
 
 **1a. For the claude agent (the default) — a Claude OAuth token** so Claude Code can run:
 
@@ -64,6 +64,8 @@ chmod 600 ~/.cww/env
 ```
 
 The token uses your existing Claude subscription (Pro, Max, etc.) and is the **only** auth the container uses — cww does not copy your host Claude login into the container (as of this writing, a copied credential is unsupported across machines and can silently fall back to metered API billing). `cww create` refuses to launch a claude workspace without the token. Onboarding state and settings are baked into the image, so the container comes up straight at the prompt.
+
+The setup-token is **valid for one year**, printed once by `claude setup-token`, and never auto-refreshed; sharing the one token across all your workspaces (and machines) is exactly its documented CI/scripting use. When it expires — or you revoke it — renew with [`cww auth`](#cww-auth-agentgitkeyvalue-options), which offers to run `claude setup-token` for you, prompts for the paste (hidden input), and updates `~/.cww/env` in place. See [Renewing a token](#renewing-a-token) for when existing workspaces pick the new value up.
 
 **1b. For the vibe agent — a Mistral API key** so Mistral Vibe can run:
 
@@ -103,7 +105,7 @@ In `baseURL`, point at the Docker host's **LAN IP** — or better, map a name to
 
 The file is read at `cww create` time (like `~/.cww/hosts` and `~/.cww/env`): edits apply to the *next* created workspace, not running ones. Legacy escape hatch: a one-line `OPENCODE_CONFIG_CONTENT={...}` in `~/.cww/env` still works when no config file exists — the file wins over it when both are present (cww warns).
 
-**2. A git token** so the container can clone the repo — and so you (or the agent) can commit and push over HTTPS from inside it. Nothing to prepare: **the first `cww create` in a repo runs the setup flow** — it shows the clone URL workspaces will use (derived from a remote — accept it, or type the exact URL for a self-hosted forge on plain http or a non-443 port), prompts for your platform login and a token (hidden input), and **validates the pair with a real `git ls-remote` before saving anything**. `cww init` re-runs the same flow whenever you need it (token rotation, URL change) and adds a preflight of everything else a `cww create` needs (docker, agent auth, agent image).
+**2. A git token** so the container can clone the repo — and so you (or the agent) can commit and push over HTTPS from inside it. Nothing to prepare: **the first `cww create` in a repo runs the setup flow** — it shows the clone URL workspaces will use (derived from a remote — accept it, or type the exact URL for a self-hosted forge on plain http or a non-443 port), prompts for your platform login and a token (hidden input), and **validates the pair with a real `git ls-remote` before saving anything**. `cww auth git` re-runs the same flow whenever you need it (token rotation, URL change); `cww init` does too, adding a preflight of everything else a `cww create` needs (docker, agent auth, agent image).
 
 Setup writes two files:
 
@@ -113,7 +115,7 @@ Setup writes two files:
   https://<user>:<token>@<host>[/<org>/<repo>]
   ```
 
-  `user:token` is used as HTTP basic auth and works with GitHub (classic/fine-grained PATs), Forgejo, and Gitea — use your **login username** for Forgejo/Gitea, `x-access-token` for GitHub fine-grained/App tokens. Make it a **fine-grained PAT scoped to the one repo** (contents read/write) where the platform supports it; `cww create` injects only the entry matching the workspace's clone URL, so a workspace never sees another repo's token. To share one token across a whole forge, hand-edit the entry down to `https://user:token@host`. Rotating a token = re-run `cww init` (existing workspaces pick it up when recreated).
+  `user:token` is used as HTTP basic auth and works with GitHub (classic/fine-grained PATs), Forgejo, and Gitea — use your **login username** for Forgejo/Gitea, `x-access-token` for GitHub fine-grained/App tokens. Make it a **fine-grained PAT scoped to the one repo** (contents read/write) where the platform supports it; `cww create` injects only the entry matching the workspace's clone URL, so a workspace never sees another repo's token. To share one token across a whole forge, hand-edit the entry down to `https://user:token@host`. Rotating a token = run `cww auth git` (or `cww init`) — see [Renewing a token](#renewing-a-token) for when existing workspaces pick it up.
 
 - `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"`, `"browser"`, and `"skill"` overrides of the `~/.cww/env` globals:
 
@@ -133,6 +135,18 @@ Clone URL details: the suggestion is inferred from your `origin` remote (SSH rem
 
 Setup also **verifies the URL from inside a container** (a throwaway `git ls-remote` with the same `/etc/hosts` extras a workspace gets — skipped until a cww image is built). This catches the classic self-hosted trap: a name like `forgejo.local` that resolves on your machine (via `/etc/hosts`, mDNS, or an ssh alias) but not through container DNS. When that's the diagnosis, setup offers to append the mapping to `~/.cww/hosts` for you, using the address your host resolves.
 
+### Renewing a token
+
+Tokens expire: the Claude setup-token after a year, fine-grained git PATs on whatever schedule you gave them. cww never mints a token — you generate the new one (`claude setup-token`, your forge's web UI) — but [`cww auth`](#cww-auth-agentgitkeyvalue-options) handles everything after that: it prompts for the paste, validates what it can, stores the value in the right file, and lists the workspaces affected.
+
+When the new value reaches a workspace:
+
+- **Stopped workspace — on its next start.** Every start (`cww start`, or the auto-start in `attach`/`shell`) copies the current secrets — agent tokens from `~/.cww/env` plus the repo's git credential — into the container, and the entrypoint applies them over the create-time values before relaunching the agent.
+- **Running workspace — after a restart.** The agent process holds the env it started with, so run `cww stop` then `cww start` (`cww auth` prints the exact commands for the running workspaces it finds).
+- **Newly created workspaces** always read the current files.
+
+Only secrets ride this refresh; everything else in `~/.cww/env` (`CWW_AGENT`, `CWW_BROWSER`, ...) keeps applying at create time only.
+
 ## Updating
 
 ```bash
@@ -147,11 +161,29 @@ A **workspace** is the unit cww manages, identified by a **name you choose** (no
 
 ### `cww init [project-path] [options]`
 
-Explicitly (re)run a repo's setup flow and preflight the machine. The first `cww create` in a repo runs the same setup by itself, so init is for the deliberate cases: **rotating a token** (fine-grained PATs expire), changing the clone URL, pinning a per-project agent, or checking a box is ready without creating anything. It confirms the clone URL (stored in `~/.cww/config.json`), prompts for your git login and token with hidden input, **validates the pair with `git ls-remote` before saving** it to `~/.cww/credentials`, then checks docker, the agent's auth, and the agent image, ending in a ✓/✗ summary. `--remote <name>` derives the URL from a non-origin remote; `--agent <name>` picks which agent to preflight and records it as the project's default. Details in [Authentication setup](#authentication-setup).
+Explicitly (re)run a repo's setup flow and preflight the machine. The first `cww create` in a repo runs the same setup by itself, so init is for the deliberate cases: changing the clone URL, pinning a per-project agent, or checking a box is ready without creating anything (for token rotation alone, [`cww auth git`](#cww-auth-agentgitkeyvalue-options) is the focused command — same flow, no preflight). It confirms the clone URL (stored in `~/.cww/config.json`), prompts for your git login and token with hidden input, **validates the pair with `git ls-remote` before saving** it to `~/.cww/credentials`, then checks docker, the agent's auth, and the agent image, ending in a ✓/✗ summary. `--remote <name>` derives the URL from a non-origin remote; `--agent <name>` picks which agent to preflight and records it as the project's default. Details in [Authentication setup](#authentication-setup).
 
 ```bash
 cww init                       # From within the repo
 cww init --remote upstream     # Clone URL from a different remote
+```
+
+### `cww auth [<agent>|git|KEY=VALUE] [options]`
+
+Store or renew a credential — the command behind [Renewing a token](#renewing-a-token). The positional target picks what to update:
+
+- **An agent name** (or nothing — the default agent): the agent's auth token, user-wide in `~/.cww/env`. Prints how to obtain the secret, offers to run the agent's setup command when it's on your PATH (`claude setup-token` for claude), prompts for the paste with hidden input, sanity-checks the value (claude tokens start with `sk-ant-oat01-`), and upserts the line in place — comments and other entries in the file survive. Agents with several possible keys (opencode's provider keys) ask which one, or take `--method <m>` (tab-completes per agent, e.g. `anthropic-api-key`).
+- **`git`**: this repo's git credential in `~/.cww/credentials` — the same prompt-validate-store flow as `cww init` (existing URL and user offered as defaults, `git ls-remote` validation), without init's machine preflight.
+- **`KEY=VALUE`**: non-interactive upsert of one line into `~/.cww/env` — the escape hatch for scripts. A key no agent declares is stored with a warning: such keys reach containers at create time only.
+
+It ends by listing the workspaces that use the credential: stopped ones pick it up on their next start, running ones after `cww stop` + `cww start` (printed ready to run).
+
+```bash
+cww auth                                  # renew the default agent's token
+cww auth claude                           # explicit agent
+cww auth opencode --method openai-api-key
+cww auth git                              # rotate this repo's PAT
+cww auth MISTRAL_API_KEY=...              # non-interactive
 ```
 
 ### `cww create [project-path] <workspace-name> [options]`
@@ -192,7 +224,7 @@ cww attach                 # From the repo directory (single workspace)
 
 ### `cww start [workspace-name]`
 
-Resume a stopped workspace — bring its container and services back up (the inverse of `cww stop`), without attaching. Use `cww create` to make a *new* workspace; `cww attach`/`cww shell` also resume a stopped one on their way in.
+Resume a stopped workspace — bring its container and services back up (the inverse of `cww stop`), without attaching. On the way it refreshes the workspace's secrets from the current `~/.cww/env` and `~/.cww/credentials`, so a token renewed since the workspace was created applies from this start on (see [Renewing a token](#renewing-a-token)). Use `cww create` to make a *new* workspace; `cww attach`/`cww shell` also resume a stopped one on their way in, with the same refresh.
 
 ```bash
 cww start feature-auth    # By workspace name
@@ -522,7 +554,7 @@ rm -rf ~/.cww/tasks/<project>-<workspace>/
 
 ### Clone or push fails inside the container
 
-The container clones over HTTPS with the repo's entry from `~/.cww/credentials`, and the same credential is what you (or the agent) use to push from inside the workspace. When the clone fails, the workspace opens `less /workspace/cww.log` instead of the agent — the full git error plus the repo/branch/auth context (press `q` for a shell). The fix is usually `cww init` on the host: it re-prompts for the token and **validates it with `git ls-remote` before saving**, then `cww teardown` + `cww create` the workspace again.
+The container clones over HTTPS with the repo's entry from `~/.cww/credentials`, and the same credential is what you (or the agent) use to push from inside the workspace. When the clone fails, the workspace opens `less /workspace/cww.log` instead of the agent — the full git error plus the repo/branch/auth context (press `q` for a shell). The fix is usually `cww auth git` on the host (it re-prompts for the token and **validates it with `git ls-remote` before saving**), then `cww stop` + `cww start` the workspace: the restart picks up the new credential and retries the clone.
 
 ### Containers can't reach a LAN git host (macOS)
 

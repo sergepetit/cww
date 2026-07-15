@@ -4,6 +4,7 @@
 
 import { die } from "./lib/ui";
 import { runAttach } from "./commands/attach";
+import { runAuth } from "./commands/auth";
 import { runComplete } from "./commands/complete";
 import { runBuild } from "./commands/build";
 import { runCache } from "./commands/cache";
@@ -32,6 +33,7 @@ Usage: cww <command> [arguments]
 Commands:
   init [path]             Set a repo up for cww: store + validate its git credential,
                           preflight docker/agent auth/image
+  auth [<agent>|git]      Store or renew an agent token / this repo's git credential
   create [path] <name>    Create a workspace (clones the repo, brings up services)
   teardown [name]         Remove a workspace's containers, volumes, network, and metadata
   attach [name]           Re-attach to a workspace's agent session
@@ -83,6 +85,9 @@ try {
   switch (command) {
     case "attach":
       await runAttach(rest);
+      break;
+    case "auth":
+      await runAuth(rest);
       break;
     case "build":
       await runBuild(rest);

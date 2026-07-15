@@ -32,9 +32,24 @@ _cww_build_targets() {
   _describe -t agents 'agent' names
 }
 
+# 'cww auth' takes an agent name or the literal 'git'.
+_cww_auth_targets() {
+  local -a names
+  names=(${(f)"$(cww __complete auth-targets 2>/dev/null)"})
+  (( ${#names} )) && _describe -t targets 'target' names
+}
+
+# --method values depend on the agent given as the first positional.
+_cww_auth_methods() {
+  local -a names
+  names=(${(f)"$(cww __complete auth-methods $words[2] 2>/dev/null)"})
+  (( ${#names} )) && _describe -t methods 'method' names
+}
+
 _cww() {
   local -a commands=(
     'init:Set a repo up for cww (store git credential, preflight checks)'
+    "auth:Store or renew an agent token / this repo's git credential"
     'create:Create a workspace (clones the repo, brings up services)'
     "teardown:Remove a workspace's containers, volumes, network, and metadata"
     "attach:Re-attach to a workspace's agent session"
@@ -81,6 +96,12 @@ _cww() {
             '--agent[agent whose auth/image to preflight]:agent:_cww_agents' \
             $help_opt \
             '1:project path:_directories'
+          ;;
+        auth)
+          _arguments \
+            "--method[which of the agent's auth methods to store]:method:_cww_auth_methods" \
+            $help_opt \
+            '1:agent, git, or KEY=VALUE:_cww_auth_targets'
           ;;
         teardown|down)
           _arguments \

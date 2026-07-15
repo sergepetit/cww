@@ -11,6 +11,17 @@ set -e
 
 SESSION_NAME="${TMUX_SESSION:-main}"
 
+# Refreshed secrets from the host: cww copies this file in before each start
+# (src/lib/env-refresh.ts), so tokens rotated after the container was created
+# override the frozen create-time env_file values here — the agent relaunched
+# below inherits them. Assignments only, and deliberately kept after sourcing
+# so a bare 'docker restart' outside cww still applies the last refresh.
+if [ -f "$HOME/.cww-env-refresh" ]; then
+    set -a
+    . "$HOME/.cww-env-refresh"
+    set +a
+fi
+
 # Git setup: identity + an env-reading credential helper so the developer's
 # token is used for clone/push but never written to disk (.git/config). Set on
 # every boot (cheap, idempotent) so it survives a container restart.

@@ -15,7 +15,12 @@ import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
 import { opencodeAgent } from "./opencode/agent";
 import { vibeAgent } from "./vibe/agent";
-import { PERSONAL_ASSET_KINDS, type AgentDefinition, type PersonalAssetKind } from "./types";
+import {
+  PERSONAL_ASSET_KINDS,
+  type AgentAuthMethod,
+  type AgentDefinition,
+  type PersonalAssetKind,
+} from "./types";
 
 // The single registration point.
 const AGENTS = [claudeAgent, vibeAgent, opencodeAgent] as const;
@@ -68,6 +73,21 @@ export function agentPreflight(
   env: Record<string, string | undefined> = process.env,
 ): void {
   byId.get(agent)?.preflight(projectPath, env);
+}
+
+// The auth methods an agent declares ('cww auth' offers them; the first is
+// the default).
+export function agentAuthMethods(agent: Agent): readonly AgentAuthMethod[] {
+  return byId.get(agent)?.authMethods ?? [];
+}
+
+// Every env key that carries an agent secret, across all registered agents.
+// The start-time secret refresh (src/lib/env-refresh.ts) forwards this union
+// — matching the env_file behavior of exposing all of ~/.cww/env. If per-
+// workspace env scoping lands (docs/agent-env-scoping-plan.md), narrow the
+// refresh to the session's recorded agent instead.
+export function allAuthEnvKeys(): string[] {
+  return [...new Set(AGENTS.flatMap((a) => a.authMethods.map((m) => m.envKey)))];
 }
 
 // Extra env vars the agent wants set on the workspace container, rendered

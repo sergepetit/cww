@@ -2,7 +2,7 @@
 // completions/). Prints newline-separated candidates and nothing else. Must
 // stay fast: it runs on every <TAB>, so no docker calls, no network.
 
-import { CWW_AGENTS } from "../agents/registry";
+import { CWW_AGENTS, agentAuthMethods, type Agent } from "../agents/registry";
 import { findAllSessions, readSessionFile, type Session } from "../lib/session";
 
 // Unique workspace names, with the same workspace->branch fallback that
@@ -34,6 +34,19 @@ export function runComplete(argv: string[]): void {
       // From the registry (no I/O), so the completion scripts never hardcode
       // the agent list.
       for (const agent of CWW_AGENTS) console.log(agent);
+      break;
+    }
+    case "auth-targets": {
+      // 'cww auth' takes an agent name or the literal 'git'.
+      for (const agent of CWW_AGENTS) console.log(agent);
+      console.log("git");
+      break;
+    }
+    case "auth-methods": {
+      // 'cww auth <agent> --method <TAB>' — the agent's declared method ids.
+      const agent = argv[1];
+      if (!agent || !(CWW_AGENTS as readonly string[]).includes(agent)) process.exit(1);
+      for (const m of agentAuthMethods(agent as Agent)) console.log(m.id);
       break;
     }
     default:

@@ -16,9 +16,28 @@
 export const PERSONAL_ASSET_KINDS = ["skills", "commands", "agents"] as const;
 export type PersonalAssetKind = (typeof PERSONAL_ASSET_KINDS)[number];
 
+// One way an agent can authenticate: the method id follows the vocabulary of
+// docs/agent-env-scoping-plan.md (oauth-token, api-key, ...), envKey is the
+// variable carrying the secret. 'cww auth' walks the user through storing it
+// (instructions/setupCommand/valuePrefix drive its prompts), and the
+// secret-refresh on workspace start (src/lib/env-refresh.ts) derives its key
+// list from these declarations.
+export interface AgentAuthMethod {
+  id: string; // e.g. "oauth-token", "anthropic-api-key"
+  envKey: string; // e.g. "CLAUDE_CODE_OAUTH_TOKEN"
+  instructions?: string; // how to obtain the secret, printed before the paste prompt
+  setupCommand?: readonly string[]; // host command that mints it, offered when on PATH
+  valuePrefix?: string; // expected value prefix; mismatch warns before storing
+}
+
 export interface AgentDefinition<Id extends string = string> {
   id: Id; // e.g. "claude" — also the image tag suffix and Dockerfile folder
   label: string; // human-facing name, e.g. "Claude Code"
+
+  // Auth methods this agent supports; first entry is the default 'cww auth'
+  // offers. preflight() below stays the authority on what a create requires —
+  // these declarations feed 'cww auth' and the start-time secret refresh.
+  authMethods: readonly AgentAuthMethod[];
 
   // Auth preflight before a container is (re)created: fail fast (process.exit)
   // with instructions when the agent's credentials are missing, rather than

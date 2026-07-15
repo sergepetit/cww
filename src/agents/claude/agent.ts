@@ -9,6 +9,21 @@ export const claudeAgent: AgentDefinition<"claude"> = {
   id: "claude",
   label: "Claude Code",
 
+  // The setup-token is a one-year OAuth token bound to the user's Pro/Max
+  // subscription (not API usage billing); 'claude setup-token' prints it once
+  // and never stores it.
+  authMethods: [
+    {
+      id: "oauth-token",
+      envKey: "CLAUDE_CODE_OAUTH_TOKEN",
+      instructions:
+        "Generate a one-year OAuth token with 'claude setup-token' (uses your\n" +
+        "Pro/Max plan, not API usage billing). It prints the token once — copy it.",
+      setupCommand: ["claude", "setup-token"],
+      valuePrefix: "sk-ant-oat01-",
+    },
+  ],
+
   // We deliberately don't copy the host's Claude login: as of this writing a
   // copied credential is unsupported across machines and can silently fall
   // back to metered API billing.

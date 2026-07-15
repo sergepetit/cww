@@ -3,11 +3,8 @@
 // use 'cww create'; to resume AND attach, 'cww attach' / 'cww shell' start it
 // too.)
 
-import { $ } from "bun";
-import fs from "node:fs";
-import path from "node:path";
 import { parseArgs } from "node:util";
-import { containerExists, containerRunning, taskCompose } from "../lib/docker";
+import { containerExists, containerRunning, startTaskStack } from "../lib/docker";
 import { die, info, success } from "../lib/ui";
 import { requireWorkspace } from "./common";
 
@@ -68,17 +65,9 @@ export async function runStart(argv: string[]): Promise<void> {
   }
 
   // Bring the whole stack back up (agent container + services), mirroring how
-  // 'cww stop' takes it down. Fall back to the agent container alone if the
-  // compose files are gone.
-  if (fs.existsSync(path.join(ws.taskDir, "docker-compose.yml"))) {
-    info("Starting container and service stack...");
-    if ((await taskCompose(ws.taskDir, ["start"])) !== 0) {
-      await $`docker start ${ws.container}`;
-    }
-  } else {
-    info("Starting container...");
-    await $`docker start ${ws.container}`;
-  }
+  // 'cww stop' takes it down — the same path attach/shell use, including the
+  // secret refresh from ~/.cww/env.
+  await startTaskStack(ws.taskDir, ws.container);
 
   success(`Workspace '${ws.workspace}' started.`);
   console.log("");

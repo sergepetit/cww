@@ -138,6 +138,15 @@ RUN cat /tmp/cww-prompt.sh >> /home/developer/.bashrc && \
     rm /tmp/cww-prompt.sh && \
     chown developer:developer /home/developer/.bashrc
 
+# Shells opened later ('cww shell' docker-execs bash) get the create-time
+# container env, not what the entrypoint sourced — so source the host-side
+# secret refresh (see entrypoint.sh) from .bashrc too, keeping what the
+# developer sees consistent with what the agent got.
+RUN printf '%s\n' '' \
+    '# cww: refreshed secrets, copied in by the host before each start' \
+    'if [ -f "$HOME/.cww-env-refresh" ]; then set -a; . "$HOME/.cww-env-refresh"; set +a; fi' \
+    >> /home/developer/.bashrc
+
 # Copy tmux config (staged into this build context by 'cww build'/install.sh)
 COPY tmux.conf /home/developer/.tmux.conf
 RUN chown developer:developer /home/developer/.tmux.conf
