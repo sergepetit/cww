@@ -8,6 +8,7 @@ import { runAuth } from "./commands/auth";
 import { runComplete } from "./commands/complete";
 import { runBuild } from "./commands/build";
 import { runCache } from "./commands/cache";
+import { runCp } from "./commands/cp";
 import { runCreate } from "./commands/create";
 import { runExportSkill } from "./commands/export-skill";
 import { runInit } from "./commands/init";
@@ -42,6 +43,7 @@ Commands:
   start [name]            Resume a stopped workspace (inverse of stop)
   stop [name]             Stop a workspace (its filesystem is preserved)
   reset [name]            Re-run the project's .cww/reset.sh (reset/reseed data)
+  cp <src>... <dest>      Copy files host <-> workspace, scp-style (ws:path)
   export-skill [name]     Export a personal skill from your host agent config
                           into this repo's workspaces (no name: list skills)
   list                    List all workspaces
@@ -101,6 +103,9 @@ try {
       break;
     case "cache":
       await runCache(rest);
+      break;
+    case "cp":
+      await runCp(rest);
       break;
     case "create":
       await runCreate(rest);

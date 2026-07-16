@@ -32,6 +32,16 @@ _cww_build_targets() {
   _describe -t agents 'agent' names
 }
 
+# 'cww cp' arguments are host paths or '<workspace>:<path>' specs: offer
+# workspace prefixes (colon kept, auto-removed if a space follows) alongside
+# the usual filename completion.
+_cww_cp_arg() {
+  local -a names
+  names=(${(f)"$(cww __complete workspaces 2>/dev/null)"})
+  (( ${#names} )) && compadd -S ':' -q -- $names
+  _files
+}
+
 # 'cww export-skill' takes a skill name from the host agent config dirs.
 _cww_host_skills() {
   local -a names
@@ -72,6 +82,7 @@ _cww() {
     'start:Resume a stopped workspace (inverse of stop)'
     'stop:Stop a workspace (its filesystem is preserved)'
     "reset:Re-run the project's .cww/reset.sh (reset/reseed data)"
+    'cp:Copy files between the host and a workspace (scp-style)'
     'export-skill:Export a personal skill from the host agent config into workspaces'
     'list:List all workspaces'
     "tunnel-command:Print the ssh command to reach a workspace's ports"
@@ -128,6 +139,9 @@ _cww() {
           ;;
         attach|shell|sh|start|stop|reset)
           _arguments $help_opt '1:workspace:_cww_workspaces'
+          ;;
+        cp)
+          _arguments $help_opt '*:source or destination:_cww_cp_arg'
           ;;
         export-skill)
           _arguments \

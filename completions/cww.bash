@@ -18,7 +18,7 @@ _cww() {
         cword=$COMP_CWORD
     fi
 
-    local commands="init auth create teardown attach shell start stop reset export-skill list tunnel-command cache build help version"
+    local commands="init auth create teardown attach shell start stop reset cp export-skill list tunnel-command cache build help version"
     local presets="npm m2 ivy2 sbt coursier gradle"
 
     if [[ $cword -eq 1 ]]; then
@@ -88,6 +88,14 @@ _cww() {
             ;;
         build)
             COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null) all" -- "$cur"))
+            ;;
+        cp)
+            # Arguments are host paths or '<workspace>:<path>' specs: offer
+            # workspace prefixes alongside filenames (completing the
+            # in-container path after the ':' is not attempted).
+            COMPREPLY=($(compgen -W "$(cww __complete workspaces 2>/dev/null | sed 's/$/:/')" -- "$cur"))
+            type compopt &>/dev/null && compopt -o nospace
+            if type _filedir &>/dev/null; then _filedir; else COMPREPLY+=($(compgen -f -- "$cur")); fi
             ;;
         export-skill)
             # First positional: skill name; second: workspace.

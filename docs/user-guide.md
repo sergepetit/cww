@@ -256,6 +256,17 @@ cww reset feature-auth    # By workspace name
 cww reset                 # From the repo directory (single workspace)
 ```
 
+### `cww cp <source>... <dest>`
+
+Copy files or directories between the host and a **running** workspace, scp-style: exactly one side names the workspace with the `<workspace>:<path>` form, and the direction follows from which side that is. An empty workspace name (`:<path>`) auto-detects the workspace like the other commands. Relative in-container paths resolve against `/workspace`, and a bare `ws:` means `/workspace` itself. Files pushed in are owned by `developer` (a raw `docker cp` would leave them root-owned); several sources at once require the destination to be a directory, like `cp`. A host path that itself contains a colon can be escaped with a `./` prefix, as in scp.
+
+```bash
+cww cp notes.md sandbox:docs/     # Host file → /workspace/docs/ in 'sandbox'
+cww cp notes.md sandbox:          # ... → /workspace
+cww cp fixtures/ :data/           # A directory, workspace auto-detected
+cww cp sandbox:out.log .          # Pull a file out of the workspace
+```
+
 ### `cww export-skill [skill-name] [workspace-name] [options]`
 
 Share one personal skill from your host agent config with the current project (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)). It looks the skill up in `~/.claude/skills`, `~/.vibe/skills`, and `~/.config/opencode/skills` (`--from <agent>` picks one when several configs have the name), then does two things: **symlinks it into the project's `.cww/skills/`** so every future `cww create` carries it (`--copy` snapshots instead — a copy no longer follows the host version), and **copies it live into the repo's running workspaces** (or only `workspace-name`), landing in the workspace agent's skills dir. Stopped workspaces are skipped; they pick the skill up from `.cww/skills/` when recreated. Agents discover skills at session start, so a running agent may need a new session before the skill triggers.

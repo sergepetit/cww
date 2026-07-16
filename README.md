@@ -80,6 +80,7 @@ cww teardown sandbox         # remove the container, services, and metadata
 | `cww start [name]` | Resume a stopped workspace (inverse of `stop`) |
 | `cww stop [name]` | Stop the container, preserving its filesystem (pause work) |
 | `cww reset [name]` | Re-run the project's `.cww/reset.sh` to reset/reseed service data |
+| `cww cp <src>... <dest>` | Copy files between the host and a workspace, scp-style (`ws:path`); pushed files land owned by `developer` |
 | `cww export-skill [name]` | Share a personal skill from your host agent config with the repo — recorded in `.cww/skills/` and pushed into running workspaces |
 | `cww teardown [name]` | Remove a workspace's containers, volumes, network, and metadata |
 | `cww list` | List all workspaces and their published ports |
