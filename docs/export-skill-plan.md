@@ -2,7 +2,7 @@
 type: plan
 title: Export a Personal Skill (`cww export-skill`)
 description: A cww export-skill command that shares one skill from the host's agent config with a project — a symlink into .cww/skills/ for future creates, plus live injection into running workspaces
-status: implemented (unit-tested; host Docker pass pending)
+status: implemented (unit-tested; host Docker pass 2026-07-16)
 created: 2026-07-16
 tags: [skills, cli, ux]
 ---
