@@ -12,7 +12,10 @@
 # conversely, silently used as the base if cww's own was never built).
 # Acceptable for a local dev tool.
 
-FROM ubuntu:24.04
+# 26.04 also moved arm64 packages onto archive.ubuntu.com (24.04's arm64
+# sources point at ports.ubuntu.com, whose availability has been shaky since
+# the migration was announced), so apt works the same on both architectures.
+FROM ubuntu:26.04
 
 ARG NODE_VERSION=20
 ARG JAVA_VERSION=25
@@ -72,7 +75,7 @@ RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash && \
 # like any other build tool. The browser is arch-dependent:
 #   - amd64: Google Chrome (the browser chrome-devtools-mcp officially
 #     supports; Google ships the deb for amd64 only).
-#   - arm64: Chromium from the xtradeb PPA (native .deb for Ubuntu 24.04;
+#   - arm64: Chromium from the xtradeb PPA (native .deb for Ubuntu 26.04;
 #     Ubuntu's own chromium-browser is a snap stub, unusable in containers).
 #     The PPA key is fetched by full fingerprint from keyserver.ubuntu.com
 #     (no add-apt-repository/dirmngr needed), and an apt pin restricts the

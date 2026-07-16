@@ -94,6 +94,14 @@ already contains the raw material. What each file is for:
   (drop/recreate schema, load fixtures, …). Derive it from the project's
   migration and seed tooling. It runs inside the workspace at create and on
   `cww reset`.
+- **`.cww/Dockerfile`** — extra image layers (system packages, compilers,
+  SDKs) built on top of the agent image at create. Must start with
+  `ARG BASE_IMAGE=coder-workspace-workflow:claude` + `FROM ${BASE_IMAGE}`
+  (cww overrides `BASE_IMAGE` with the workspace's agent image; the default
+  only silences BuildKit's InvalidDefaultArgInFrom warning and keeps a bare
+  `docker build .cww` working). The build context is `.cww/`, so `COPY` sees
+  sibling files. A new image applies only to a *recreated* workspace — the
+  full loop below.
 - **`.cww/hosts`** — `name ip` lines for internal VCS/registry hostnames the
   container's DNS can't resolve.
 - **`.cww/opencode.json`** — personal OpenCode config (custom/local model
@@ -114,8 +122,8 @@ a file you edit here does nothing until it completes this loop:
 1. You edit `.cww/…` in `/workspace`, commit, and push.
 2. The user pulls on their host.
 3. The user runs the applying command there:
-   - services / hosts / env changes → `cww teardown NAME && cww create NAME`
-     (a fresh workspace)
+   - services / hosts / env / Dockerfile changes → `cww teardown NAME &&
+     cww create NAME` (a fresh workspace)
    - `reset.sh` changes → `cww reset NAME`
    - credential or clone-URL changes → `cww init`
 

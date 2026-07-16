@@ -159,7 +159,10 @@ Code-specific; skipped for <agent>" info message (today it lives inside the
 Deliberately not modeled: a per-agent `imageTag` field (every agent's image is
 `coder-workspace-workflow:<id>`; add the field when an agent actually needs
 otherwise), and the `"claude"` default in `resolveAgent` stays an explicit literal —
-it's policy, not list order.
+it's policy, not list order. A *project* image layer does exist now — a repo's
+optional `.cww/Dockerfile` builds a separate `cww-project-<name>:<agent>` image
+stacked on top of the agent image (`src/lib/project-image.ts`); the agent tags
+themselves remain fixed.
 
 Also deliberately deferred: a `ContainerRuntime` abstraction (docker as one
 implementation; macOS's `container` as a possible future one; a mock for

@@ -9,7 +9,7 @@
 FROM cww-base:latest
 USER root
 
-# Vibe is a Python 3.12+ tool; Ubuntu 24.04 ships 3.12. pipx gives it an
+# Vibe is a Python 3.12+ tool; Ubuntu 26.04 ships 3.14. pipx gives it an
 # isolated venv under the developer's ~/.local.
 RUN apt-get update && apt-get install -y python3 python3-venv pipx && \
     rm -rf /var/lib/apt/lists/*

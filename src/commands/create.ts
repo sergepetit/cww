@@ -12,7 +12,6 @@ import {
   agentLabel,
   agentPreflight,
   agentImage,
-  ensureAgentImage,
   findAuthMethod,
   getCwwDir,
   materializeCwwAssets,
@@ -39,6 +38,7 @@ import { hostsEntries } from "../lib/hosts";
 import { setupRepo } from "../lib/setup";
 import { getProjectConfig, setProjectConfig } from "../lib/user-config";
 import { containerHostname, getContainerName, getTaskDir, normalizeGitUrl } from "../lib/naming";
+import { resolveWorkspaceImage } from "../lib/project-image";
 import { resolveProjectPath } from "../lib/paths";
 import { readSession, writeSession } from "../lib/session";
 import { confirm, die, error, info, success, warn } from "../lib/ui";
@@ -116,6 +116,7 @@ interface TaskParams {
   workspaceName: string;
   branchName: string;
   agent: Agent;
+  image: string;
   repoUrl: string;
   gitAuthorName: string;
   gitAuthorEmail: string;
@@ -132,7 +133,7 @@ function generateCompose(p: TaskParams): void {
     TASK_DIR: p.taskDir,
     CONTAINER_NAME: p.containerName,
     CONTAINER_HOSTNAME: containerHostname(p.containerName),
-    CWW_IMAGE: agentImage(p.agent),
+    CWW_IMAGE: p.image,
     WORKSPACE_NAME: p.workspaceName,
     BRANCH_NAME: p.branchName,
     REPO_URL: p.repoUrl,
@@ -518,6 +519,7 @@ export async function runCreate(argv: string[]): Promise<void> {
     workspaceName,
     branchName,
     agent,
+    image: agentImage(agent),
     repoUrl,
     gitAuthorName,
     gitAuthorEmail,
@@ -616,7 +618,10 @@ export async function runCreate(argv: string[]): Promise<void> {
   // container is created.
   agentPreflight(agent, projectPath, method);
   const agentEnv = agentContainerEnv(agent, projectPath);
-  await ensureAgentImage(agent);
+  // Ensures the agent image and layers the project's optional .cww/Dockerfile
+  // on top. A build failure dies here, before any metadata or container
+  // exists (writeSession runs below in both the fresh and recreate paths).
+  params.image = await resolveWorkspaceImage(projectPath, projectName, agent);
 
   // The single agent credential the workspace receives, carried by the
   // task-dir env file next to the git credential.

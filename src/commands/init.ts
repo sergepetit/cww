@@ -23,6 +23,7 @@ import { getGitRoot, isGitRepo } from "../lib/git";
 import { resolveProjectPath } from "../lib/paths";
 import { setupRepo } from "../lib/setup";
 import { getProjectConfig, setProjectConfig } from "../lib/user-config";
+import { projectImagePlan } from "../lib/project-image";
 import { GREEN, RED, NC, die, error, info, success, warn } from "../lib/ui";
 
 const USAGE = `Usage: cww init [project-path] [options]
@@ -179,6 +180,12 @@ export async function runInit(argv: string[]): Promise<void> {
   const image = await $`docker image inspect ${agentImage(agent)}`.quiet().nothrow();
   if (image.exitCode === 0) ok(`agent image built (${agentImage(agent)})`);
   else ready = ko(`agent image built (${agentImage(agent)})`, `run: cww build ${agent}`);
+
+  // Presence report only — like the agent image, init never builds.
+  const projectImage = projectImagePlan(projectPath, path.basename(projectPath), agent);
+  if (projectImage) {
+    ok(`project image layer (.cww/Dockerfile → ${projectImage.tag}, built at each create)`);
+  }
 
   console.log("");
   if (ready) success("Ready. Create a workspace with: cww create <workspace-name>");

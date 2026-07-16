@@ -192,7 +192,7 @@ cww auth MISTRAL_API_KEY=...              # non-interactive
 
 ### `cww create [project-path] <workspace-name> [options]`
 
-Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. **The first create in a repo runs the setup flow inline** (clone URL + validated git token — see [Authentication setup](#authentication-setup)); later creates reuse the stored config. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also runs the project's optional `.cww/reset.sh` (if present), loads the [built-in workspace skill](#the-built-in-workspace-skill), copies your personal `.cww/skills/` into the container for whichever agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
+Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. **The first create in a repo runs the setup flow inline** (clone URL + validated git token — see [Authentication setup](#authentication-setup)); later creates reuse the stored config. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also builds the project's optional [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) on top of the agent image, runs the project's optional `.cww/reset.sh` (if present), loads the [built-in workspace skill](#the-built-in-workspace-skill), copies your personal `.cww/skills/` into the container for whichever agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
 
 `--agent <claude|vibe|opencode>` picks the coding agent (default: the project's `"agent"` in `~/.cww/config.json`, then `CWW_AGENT` from `~/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
 
@@ -342,7 +342,7 @@ Your project repo is never modified or used as a worktree. Per-workspace state l
 There is one image per coding agent, layered on a shared base image: `docker/base/Dockerfile` builds the common environment (tagged `cww-base:latest`, a local-only tag), and each agent's self-contained `src/agents/<name>/Dockerfile` builds `FROM` it, installing the agent's CLI and baking its config. `cww build [claude|vibe|opencode|all]` builds them — always base first, then the agent (a no-op base rebuild takes seconds thanks to the layer cache); a missing image is also offered for building on first `cww create --agent <name>`.
 
 The shared base includes:
-- Ubuntu 24.04 (shell is bash)
+- Ubuntu 26.04 (shell is bash)
 - Node.js 20
 - Bun (so cww itself can be developed in a workspace)
 - Java 25 (Eclipse Temurin)
@@ -353,7 +353,7 @@ Deliberately *not* included: compilers (`build-essential`) and build tools like 
 
 > **Note:** Google ships the Chrome `.deb` for amd64 only; arm64 hosts (e.g. Apple Silicon Macs building natively) get Chromium from the xtradeb PPA instead — same headful stack, same CDP port. The PPA is apt-pinned so only `chromium*` packages can come from it.
 
-The agent images add Claude Code (npm), Mistral Vibe (pipx), or OpenCode (npm) respectively. There's no per-project image hook — every workspace of a given agent shares that agent's image. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`.
+The agent images add Claude Code (npm), Mistral Vibe (pipx), or OpenCode (npm) respectively. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`. For **one project** only, ship a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) in the repo — cww layers it on top of the agent image at create.
 
 ## tmux keys
 
@@ -412,6 +412,22 @@ These services will be started alongside the agent's container (the base service
 ### Resetting service data (`.cww/reset.sh`)
 
 A project can ship an optional `.cww/reset.sh` — one script that resets **and** reseeds its service data (drop/recreate schema, load fixtures, flush a cache, reindex, etc.). cww runs it automatically at the end of `cww create`, and you can re-run it any time with [`cww reset`](#cww-reset-workspace-name) to get back to a clean, seeded state without recreating the whole workspace. If the project has no `.cww/reset.sh`, both are simply no-ops.
+
+### Customizing the workspace image (`.cww/Dockerfile`)
+
+A project can also ship an optional `.cww/Dockerfile`, which cww builds **on top of** the agent image at every `cww create` (and recreate) — the place to bake in image-level dependencies (system packages, compilers, SDKs) instead of having the agent reinstall them at runtime. Start it from the `BASE_IMAGE` build-arg so it stacks on whichever agent the workspace runs:
+
+```dockerfile
+ARG BASE_IMAGE=coder-workspace-workflow:claude
+FROM ${BASE_IMAGE}
+RUN sudo apt-get update && sudo apt-get install -y build-essential
+```
+
+- cww passes `--build-arg BASE_IMAGE=coder-workspace-workflow:<agent>` for the workspace's agent, so the same Dockerfile serves claude, vibe, and opencode workspaces. Hardcoding your own `FROM` instead pins one agent — or builds on an image without the cww entrypoint and `developer` user — so cww warns when the file doesn't reference `BASE_IMAGE`. (The `ARG` default just keeps a bare `docker build .cww` working for debugging.)
+- The build context is the `.cww/` folder itself, so `COPY provision.sh /usr/local/bin/` works for files dropped next to the Dockerfile.
+- The derived image is tagged `cww-project-<project>:<agent>` and rebuilt at every create — an unchanged rebuild takes seconds thanks to Docker's layer cache, and edits to the Dockerfile or `COPY`'d files are picked up automatically.
+- Like the other `.cww/` hooks, the file is read from your **host checkout**: edits apply to the next create/recreate, and existing workspaces keep the image they were created with.
+- A failing build aborts the create (docker's own error output shows the cause), before any workspace metadata or container exists. Delete the Dockerfile to go back to the plain agent image; the orphaned `cww-project-...` image can then be removed with `docker rmi`.
 
 ### Skills, commands, and agents (two tiers)
 
