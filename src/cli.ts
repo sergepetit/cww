@@ -9,6 +9,7 @@ import { runComplete } from "./commands/complete";
 import { runBuild } from "./commands/build";
 import { runCache } from "./commands/cache";
 import { runCreate } from "./commands/create";
+import { runExportSkill } from "./commands/export-skill";
 import { runInit } from "./commands/init";
 import { runList } from "./commands/list";
 import { runReset } from "./commands/reset";
@@ -41,6 +42,8 @@ Commands:
   start [name]            Resume a stopped workspace (inverse of stop)
   stop [name]             Stop a workspace (its filesystem is preserved)
   reset [name]            Re-run the project's .cww/reset.sh (reset/reseed data)
+  export-skill [name]     Export a personal skill from your host agent config
+                          into this repo's workspaces (no name: list skills)
   list                    List all workspaces
   tunnel-command [name]   Print the ssh command to reach a workspace's ports
   cache <preset|name>     Provision a shared dependency-cache dir (npm, m2, …)
@@ -101,6 +104,9 @@ try {
       break;
     case "create":
       await runCreate(rest);
+      break;
+    case "export-skill":
+      await runExportSkill(rest);
       break;
     case "init":
       await runInit(rest);

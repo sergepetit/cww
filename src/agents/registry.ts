@@ -119,6 +119,21 @@ export function agentContainerEnv(
   return byId.get(agent)?.containerEnv?.(projectPath, env) ?? {};
 }
 
+// Where the given agent keeps personal skills on the HOST ("~" expanded
+// against home), or null when it declares no host dir. 'cww export-skill'
+// searches these.
+export function agentHostSkillsDir(agent: Agent, home: string = os.homedir()): string | null {
+  const dir = byId.get(agent)?.hostSkillsDir;
+  // resolve(): the dir ends up as a symlink target, which must be absolute.
+  return dir ? path.resolve(home, dir.replace(/^~\/?/, "")) : null;
+}
+
+// The container-side skills dir the agent consumes (personalAssets.skills),
+// or null when it maps none — e.g. an agent id from a stale session.
+export function agentContainerSkillsDir(agent: string): string | null {
+  return byId.get(agent)?.personalAssets.skills ?? null;
+}
+
 export interface PersonalAssetPlan {
   copies: { kind: PersonalAssetKind; src: string; dest: string }[];
   skipped: PersonalAssetKind[]; // present in .cww/ but unmapped for this agent

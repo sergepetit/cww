@@ -256,6 +256,19 @@ cww reset feature-auth    # By workspace name
 cww reset                 # From the repo directory (single workspace)
 ```
 
+### `cww export-skill [skill-name] [workspace-name] [options]`
+
+Share one personal skill from your host agent config with the current project (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)). It looks the skill up in `~/.claude/skills`, `~/.vibe/skills`, and `~/.config/opencode/skills` (`--from <agent>` picks one when several configs have the name), then does two things: **symlinks it into the project's `.cww/skills/`** so every future `cww create` carries it (`--copy` snapshots instead — a copy no longer follows the host version), and **copies it live into the repo's running workspaces** (or only `workspace-name`), landing in the workspace agent's skills dir. Stopped workspaces are skipped; they pick the skill up from `.cww/skills/` when recreated. Agents discover skills at session start, so a running agent may need a new session before the skill triggers.
+
+With no arguments it lists the exportable host skills. It never overwrites: an existing `.cww/skills/<name>` entry is reported and left alone, and when `.cww/skills` is itself a symlink (the share-everything pattern) nothing is written through it.
+
+```bash
+cww export-skill                              # List exportable host skills
+cww export-skill organize-docs                # This repo + its running workspaces
+cww export-skill organize-docs sandbox        # Only into 'sandbox'
+cww export-skill deploy --from claude --copy  # Snapshot from a specific config
+```
+
 ### `cww teardown [workspace-name] [-y|--yes]`
 
 Remove the workspace and everything it created: the agent container, service containers, the network, this workspace's volumes, and its host metadata. It is **destructive** and **pushes nothing** — push anything worth keeping first (via `cww shell` then `git push`, or from the agent). Prompts for confirmation unless `-y`. `down` is an alias.
@@ -434,7 +447,7 @@ RUN sudo apt-get update && sudo apt-get install -y build-essential
 Skills are the open [Agent Skills](https://agentskills.io) format (a folder with a `SKILL.md`), so the same skill works with every agent. Commands and agents are Claude Code file formats: Vibe's equivalents are skills with `user-invocable: true` (which become slash commands) and TOML agent configs; OpenCode's are its own markdown commands/agents with different frontmatter. cww makes these available in a workspace in two tiers:
 
 - **Team (committed in the repo):** each agent reads its own committed locations, and they ride the in-container clone automatically — nothing special to configure. Claude Code reads `.claude/skills/` (plus `.claude/commands/`, `.claude/agents/`); Vibe reads `.vibe/skills/` or `.agents/skills/`; OpenCode reads `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`. Claude Code does *not* read the generic `.agents/skills/`, so a repo serving all agents commits `.claude/skills/` plus a location Vibe reads (an in-repo relative symlink like `.vibe/skills -> ../.claude/skills` rides the clone too). Other repo-committed config — like a `.vibe/config.toml` or an `opencode.json` — rides the clone like any other file.
-- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container at `cww create`. `.cww/skills/` loads for whichever agent the workspace runs — into `~/.claude/skills` for Claude Code, `~/.vibe/skills` for Vibe, `~/.config/opencode/skills` for OpenCode. `.cww/commands/` and `.cww/agents/` are copied only for claude workspaces; vibe and opencode workspaces print a one-line skip notice for them. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, or symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`); the copy dereferences symlinks host-side, so the real files land in the container. These are usually gitignored.
+- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container at `cww create`. `.cww/skills/` loads for whichever agent the workspace runs — into `~/.claude/skills` for Claude Code, `~/.vibe/skills` for Vibe, `~/.config/opencode/skills` for OpenCode. `.cww/commands/` and `.cww/agents/` are copied only for claude workspaces; vibe and opencode workspaces print a one-line skip notice for them. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`) — the copy dereferences symlinks host-side, so the real files land in the container — or share a single skill with [`cww export-skill`](#cww-export-skill-skill-name-workspace-name-options), which also pushes it into workspaces that are already running. These are usually gitignored.
 
 ### The built-in workspace skill
 

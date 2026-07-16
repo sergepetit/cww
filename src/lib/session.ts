@@ -81,6 +81,23 @@ export async function resolveWorkspace(name?: string): Promise<WorkspaceRef | nu
   };
 }
 
+// Every workspace recorded for the given repo root (session.mainRepo match),
+// with the same field fallbacks resolveWorkspace applies.
+export function findRepoWorkspaces(root: string): WorkspaceRef[] {
+  const refs: WorkspaceRef[] = [];
+  for (const file of findAllSessions()) {
+    const session = readSessionFileSafe(file);
+    if (session.mainRepo !== root) continue;
+    refs.push({
+      taskDir: path.dirname(file),
+      session,
+      workspace: session.workspace ?? session.branch ?? "",
+      container: session.container ?? "",
+    });
+  }
+  return refs;
+}
+
 // Resolve a session.json path either by workspace name or, with no name,
 // by auto-detecting the single workspace belonging to the current git repo.
 // Returns null on no-match or an ambiguous cwd (multiple workspaces for the

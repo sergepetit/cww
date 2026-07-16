@@ -32,6 +32,8 @@ export const vibeAgent: AgentDefinition<"vibe"> = {
     skills: "/home/developer/.vibe/skills",
   },
 
+  hostSkillsDir: "~/.vibe/skills",
+
   preflight(projectPath, _env, method) {
     // api-key's presence is guaranteed by the caller. config-file means: a
     // repo-committed .vibe/config.toml rides the clone into the container and

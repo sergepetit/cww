@@ -76,6 +76,7 @@ question is a cww command, say so explicitly as: *"on your host machine, run
 | the agent's own token expired / was renewed | `cww auth`, then `cww stop` + `cww start` this workspace |
 | change the clone URL | `cww init` in the repo |
 | speed up dependency installs across workspaces | `cww cache <preset>` (e.g. `npm`, `m2`, `gradle`) |
+| load one of their personal skills into this workspace | `cww export-skill <name> $CWW_WORKSPACE` — it lands here live; a new agent session may be needed before it triggers |
 
 Command details, options, and troubleshooting: `references/user-guide.md`.
 

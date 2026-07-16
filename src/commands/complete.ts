@@ -4,6 +4,7 @@
 
 import { CWW_AGENTS, agentAuthMethods, type Agent } from "../agents/registry";
 import { findAllSessions, readSessionFile, type Session } from "../lib/session";
+import { listHostSkills } from "./export-skill";
 
 // Unique workspace names, with the same workspace->branch fallback that
 // resolveWorkspace() applies to pre-rename sessions.
@@ -57,6 +58,13 @@ export function runComplete(argv: string[]): void {
         for (const m of agentAuthMethods(agent)) ids.add(m.id);
       }
       for (const id of ids) console.log(id);
+      break;
+    }
+    case "host-skills": {
+      // 'cww export-skill <TAB>' — skill names across the agents' host
+      // config dirs (local FS only, so it stays <TAB>-fast), deduplicated.
+      const names = new Set(listHostSkills().map((s) => s.name));
+      for (const name of [...names].sort()) console.log(name);
       break;
     }
     default:

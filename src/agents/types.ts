@@ -64,6 +64,13 @@ export interface AgentDefinition<Id extends string = string> {
   // whole mechanism.
   personalAssets: Partial<Record<PersonalAssetKind, string>>;
 
+  // Optional: where this agent keeps personal skills on the user's HOST
+  // machine ("~"-prefixed; the registry expands it). 'cww export-skill'
+  // searches these dirs for skills to share with a project. Deliberately
+  // explicit rather than derived from personalAssets.skills — the host
+  // layout mirroring the container's is convention, not contract.
+  hostSkillsDir?: string;
+
   // Optional: extra env vars to set on the workspace container at create
   // time, rendered into the generated compose config (an 'environment:'
   // entry overrides the env_file). May die() on invalid user config — it

@@ -63,4 +63,6 @@ export const claudeAgent: AgentDefinition<"claude"> = {
     commands: "/home/developer/.claude/commands",
     agents: "/home/developer/.claude/agents",
   },
+
+  hostSkillsDir: "~/.claude/skills",
 };

@@ -32,6 +32,13 @@ _cww_build_targets() {
   _describe -t agents 'agent' names
 }
 
+# 'cww export-skill' takes a skill name from the host agent config dirs.
+_cww_host_skills() {
+  local -a names
+  names=(${(f)"$(cww __complete host-skills 2>/dev/null)"})
+  (( ${#names} )) && _describe -t skills 'skill' names
+}
+
 # 'cww auth' takes an agent name or the literal 'git'.
 _cww_auth_targets() {
   local -a names
@@ -65,6 +72,7 @@ _cww() {
     'start:Resume a stopped workspace (inverse of stop)'
     'stop:Stop a workspace (its filesystem is preserved)'
     "reset:Re-run the project's .cww/reset.sh (reset/reseed data)"
+    'export-skill:Export a personal skill from the host agent config into workspaces'
     'list:List all workspaces'
     "tunnel-command:Print the ssh command to reach a workspace's ports"
     'cache:Provision a shared dependency-cache dir (npm, m2, ...)'
@@ -120,6 +128,14 @@ _cww() {
           ;;
         attach|shell|sh|start|stop|reset)
           _arguments $help_opt '1:workspace:_cww_workspaces'
+          ;;
+        export-skill)
+          _arguments \
+            '--from[host agent config to take the skill from]:agent:_cww_agents' \
+            '--copy[copy into .cww/skills instead of symlinking]' \
+            $help_opt \
+            '1:skill:_cww_host_skills' \
+            '2:workspace:_cww_workspaces'
           ;;
         tunnel-command|tunnel)
           _arguments \

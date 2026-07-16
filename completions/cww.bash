@@ -18,7 +18,7 @@ _cww() {
         cword=$COMP_CWORD
     fi
 
-    local commands="init auth create teardown attach shell start stop reset list tunnel-command cache build help version"
+    local commands="init auth create teardown attach shell start stop reset export-skill list tunnel-command cache build help version"
     local presets="npm m2 ivy2 sbt coursier gradle"
 
     if [[ $cword -eq 1 ]]; then
@@ -57,7 +57,11 @@ _cww() {
             return
             ;;
         --from)
-            if type _filedir &>/dev/null; then _filedir -d; else COMPREPLY=($(compgen -d -- "$cur")); fi
+            # 'export-skill --from' names a host agent config; 'cache --from'
+            # names a seed directory.
+            if [[ $cmd == export-skill ]]; then
+                COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null)" -- "$cur"))
+            elif type _filedir &>/dev/null; then _filedir -d; else COMPREPLY=($(compgen -d -- "$cur")); fi
             return
             ;;
     esac
@@ -72,6 +76,7 @@ _cww() {
             list|ls)               flags="--json -h --help" ;;
             tunnel-command|tunnel) flags="--host -h --help" ;;
             cache)                 flags="--from -h --help" ;;
+            export-skill)          flags="--from --copy -h --help" ;;
         esac
         COMPREPLY=($(compgen -W "$flags" -- "$cur"))
         return
@@ -83,6 +88,14 @@ _cww() {
             ;;
         build)
             COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null) all" -- "$cur"))
+            ;;
+        export-skill)
+            # First positional: skill name; second: workspace.
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(cww __complete host-skills 2>/dev/null)" -- "$cur"))
+            else
+                COMPREPLY=($(compgen -W "$(cww __complete workspaces 2>/dev/null)" -- "$cur"))
+            fi
             ;;
         auth)
             COMPREPLY=($(compgen -W "$(cww __complete auth-targets 2>/dev/null)" -- "$cur"))

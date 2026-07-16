@@ -100,6 +100,8 @@ export const opencodeAgent: AgentDefinition<"opencode"> = {
     skills: "/home/developer/.config/opencode/skills",
   },
 
+  hostSkillsDir: "~/.config/opencode/skills",
+
   containerEnv(projectPath, env) {
     return opencodeContainerEnv(projectPath, env);
   },
