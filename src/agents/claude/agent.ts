@@ -3,7 +3,32 @@
 // contract.
 
 import { info } from "../../lib/ui";
+import { getProjectConfig, userConfigFile } from "../../lib/user-config";
 import type { AgentDefinition } from "../types";
+
+// Model selection for the workspace's Claude Code: ANTHROPIC_MODEL sets the
+// session default (the in-session /model and --model still win inside the
+// container), CLAUDE_CODE_SUBAGENT_MODEL the model subagents/workflows run
+// on. Non-secret, so they ride the create-time agent-env override — not the
+// secret-refresh channel — and change on recreate, not restart. Precedence
+// per field: project config.json (model/subagentModel) > ~/.cww/env (already
+// loaded into env by the caller) > unset, leaving Claude Code's own default.
+// Values pass through verbatim (aliases like "opus" and full ids both work);
+// cww doesn't validate model names. `configFile` is injectable so tests never
+// depend on the real ~/.cww.
+export function claudeContainerEnv(
+  projectPath: string,
+  env: Record<string, string | undefined>,
+  configFile: string = userConfigFile(),
+): Record<string, string> {
+  const cfg = getProjectConfig(projectPath, configFile);
+  const out: Record<string, string> = {};
+  const model = cfg?.model || env.ANTHROPIC_MODEL;
+  const subagentModel = cfg?.subagentModel || env.CLAUDE_CODE_SUBAGENT_MODEL;
+  if (model) out.ANTHROPIC_MODEL = model;
+  if (subagentModel) out.CLAUDE_CODE_SUBAGENT_MODEL = subagentModel;
+  return out;
+}
 
 export const claudeAgent: AgentDefinition<"claude"> = {
   id: "claude",
@@ -65,4 +90,8 @@ export const claudeAgent: AgentDefinition<"claude"> = {
   },
 
   hostSkillsDir: "~/.claude/skills",
+
+  containerEnv(projectPath, env) {
+    return claudeContainerEnv(projectPath, env);
+  },
 };

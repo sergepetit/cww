@@ -120,7 +120,7 @@ Setup writes two files:
 
   `user:token` is used as HTTP basic auth and works with GitHub (classic/fine-grained PATs), Forgejo, and Gitea — use your **login username** for Forgejo/Gitea, `x-access-token` for GitHub fine-grained/App tokens. Make it a **fine-grained PAT scoped to the one repo** (contents read/write) where the platform supports it; `cww create` injects only the entry matching the workspace's clone URL, so a workspace never sees another repo's token. To share one token across a whole forge, hand-edit the entry down to `https://user:token@host`. Rotating a token = run `cww auth git` (or `cww init`) — see [Renewing a token](#renewing-a-token) for when existing workspaces pick it up.
 
-- `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"`, `"auth"`, `"browser"`, and `"skill"` overrides of the `~/.cww/env` globals (`"auth"` is where `cww create`/`cww init` record the interactively chosen auth method):
+- `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"`, `"auth"`, `"browser"`, `"skill"`, `"model"`, and `"subagentModel"` overrides of the `~/.cww/env` globals (`"auth"` is where `cww create`/`cww init` record the interactively chosen auth method; `"model"`/`"subagentModel"` are claude-only — see [Configuration](#configuration)):
 
   ```json
   {
@@ -509,6 +509,8 @@ Because the tunnel's local side is the stable container port, you keep **one** b
 | `CWW_BROWSER` | `on` | [Built-in headful browser](#built-in-headful-browser) for new workspaces; `off`/`0`/`false`/`no` disables (set in `~/.cww/env`; per project use `"browser"` in `~/.cww/config.json`) |
 | `CWW_SKILL` | `on` | [Built-in workspace skill](#the-built-in-workspace-skill) for new workspaces; `off`/`0`/`false`/`no` disables (set in `~/.cww/env`; per project use `"skill"` in `~/.cww/config.json`) |
 | `CWW_BROWSER_RESOLUTION` | `1920x1080` | Virtual display size of the built-in browser (`<width>x<height>`) |
+| `ANTHROPIC_MODEL` | *(Claude Code's default)* | Session model for new claude workspaces, alias or full id — e.g. `opus`, `claude-opus-4-8` (set in `~/.cww/env`; per project use `"model"` in `~/.cww/config.json`). Applies at create/recreate, not restart; `/model` inside the workspace still wins |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | *(Claude Code's default)* | Model Claude Code subagents/workflows run on in new claude workspaces (set in `~/.cww/env`; per project use `"subagentModel"` in `~/.cww/config.json`). Applies at create/recreate, not restart |
 
 ### Passing env to workspaces
 

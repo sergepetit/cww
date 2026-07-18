@@ -19,6 +19,7 @@ import {
   resolveAgent,
   validateAgent,
 } from "../src/agents/registry";
+import { claudeContainerEnv } from "../src/agents/claude/agent";
 import { opencodeAgent, opencodeContainerEnv, resolveOpencodeConfigFile } from "../src/agents/opencode/agent";
 import { PERSONAL_ASSET_KINDS } from "../src/agents/types";
 
@@ -360,5 +361,65 @@ describe("agentBuildPlan", () => {
         expect(fs.existsSync(path.join(getCwwDir(), step.context, "Dockerfile"))).toBe(true);
       }
     }
+  });
+});
+
+describe("claude model config", () => {
+  // A throwaway project dir plus a config.json carrying (or not) an entry for
+  // it — keyed by realpath, exactly as user-config.ts writes it.
+  function project(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+  }
+  function configWith(projectPath: string, entry?: Record<string, unknown>): string {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-")), "config.json");
+    if (entry) {
+      const key = fs.realpathSync(projectPath);
+      fs.writeFileSync(file, JSON.stringify({ projects: { [key]: entry } }));
+    }
+    return file;
+  }
+
+  test("nothing configured injects nothing", () => {
+    const p = project();
+    expect(claudeContainerEnv(p, {}, configWith(p))).toEqual({});
+  });
+
+  test("global env vars pass through, each independently", () => {
+    const p = project();
+    const file = configWith(p);
+    expect(
+      claudeContainerEnv(p, { ANTHROPIC_MODEL: "opus", CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" }, file),
+    ).toEqual({ ANTHROPIC_MODEL: "opus", CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" });
+    expect(claudeContainerEnv(p, { CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-8" }, file)).toEqual({
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-8",
+    });
+  });
+
+  test("project config beats the global env, per field", () => {
+    const p = project();
+    const file = configWith(p, { model: "claude-opus-4-8" });
+    expect(
+      claudeContainerEnv(p, { ANTHROPIC_MODEL: "sonnet", CLAUDE_CODE_SUBAGENT_MODEL: "haiku" }, file),
+    ).toEqual({ ANTHROPIC_MODEL: "claude-opus-4-8", CLAUDE_CODE_SUBAGENT_MODEL: "haiku" });
+  });
+
+  test("subagentModel in project config works without model", () => {
+    const p = project();
+    const file = configWith(p, { subagentModel: "sonnet" });
+    expect(claudeContainerEnv(p, {}, file)).toEqual({ CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" });
+  });
+
+  test("empty strings don't leak into the container", () => {
+    const p = project();
+    expect(
+      claudeContainerEnv(p, { ANTHROPIC_MODEL: "", CLAUDE_CODE_SUBAGENT_MODEL: "" }, configWith(p)),
+    ).toEqual({});
+  });
+
+  test("another project's entry doesn't apply", () => {
+    const p = project();
+    const other = project();
+    const file = configWith(other, { model: "opus" });
+    expect(claudeContainerEnv(p, {}, file)).toEqual({});
   });
 });

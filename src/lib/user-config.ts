@@ -19,9 +19,10 @@
 // marker that 'cww create' checks before offering the setup flow. remote
 // records which git remote the URL was captured for, so 'cww create
 // --remote <same>' keeps using the (possibly hand-corrected) repoUrl instead
-// of re-deriving. agent, auth, browser, and skill are optional per-project
-// overrides of the ~/.cww/env globals (auth is the method id new workspaces
-// authenticate with — 'cww create' records the interactive answer here).
+// of re-deriving. agent, auth, browser, skill, model, and subagentModel are
+// optional per-project overrides of the ~/.cww/env globals (auth is the
+// method id new workspaces authenticate with — 'cww create' records the
+// interactive answer here; model/subagentModel are Claude-only, hand-edited).
 // Secrets never live here: tokens go in ~/.cww/credentials and ~/.cww/env.
 
 import fs from "node:fs";
@@ -36,6 +37,8 @@ export interface ProjectConfig {
   auth?: string; // auth method id for the project's agent (see agent-env-scoping-plan)
   browser?: string;
   skill?: string;
+  model?: string; // Claude session model, over the ANTHROPIC_MODEL global
+  subagentModel?: string; // Claude subagent/workflow model, over CLAUDE_CODE_SUBAGENT_MODEL
   [key: string]: unknown; // unknown fields survive a read-modify-write
 }
 
