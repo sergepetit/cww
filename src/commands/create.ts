@@ -647,6 +647,15 @@ export async function runCreate(argv: string[]): Promise<void> {
     generateHostsOverride(taskDir, projectPath);
     generateBrowserOverride(taskDir);
     generateAgentEnvOverride(taskDir, agentEnv);
+    // Re-sync the services overlay from the project rather than trusting the
+    // saved copy: it may predate a config fix made after a failed create, and
+    // the project file may have been removed since.
+    if (fs.existsSync(projectServices)) {
+      fs.copyFileSync(projectServices, taskServices);
+      await provisionDeclaredCaches(taskServices);
+    } else {
+      fs.rmSync(taskServices, { force: true });
+    }
     await composeUp(taskDir);
     await finalizeAndAttach(params, noAttach);
   }
