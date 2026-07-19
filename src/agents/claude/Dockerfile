@@ -11,8 +11,10 @@ USER root
 
 # Install Claude Code CLI + the Chrome DevTools MCP server (pinned; it attaches
 # to the cww browser stack over CDP — see the mcpServers entry in
-# claude-onboarding.json).
-RUN npm install -g @anthropic-ai/claude-code chrome-devtools-mcp@1.5.0
+# claude-onboarding.json) + the TypeScript language server that backs Claude
+# Code's LSP tool (enabled via the typescript-lsp plugin baked below).
+RUN npm install -g @anthropic-ai/claude-code chrome-devtools-mcp@1.5.0 \
+    typescript-language-server typescript
 
 # Disable the auto-updater — a disposable container never self-updates.
 # (Note: this stops update *attempts* but does NOT remove the harmless
@@ -40,7 +42,8 @@ ENV DISABLE_AUTOUPDATER=1
 #     CDP port; browser-hook.sh strips it when CWW_BROWSER=off.
 #
 # settings.json -> ~/.claude/settings.json (declarative): theme + nonessential
-# traffic off + a custom status line ("<cwd> | <model> | <context tokens>").
+# traffic off + a custom status line ("<cwd> | <model> | <context tokens>") +
+# the typescript-lsp plugin enablement (extraKnownMarketplaces/enabledPlugins).
 RUN mkdir -p /home/developer/.claude
 COPY claude-onboarding.json /home/developer/.claude.json
 COPY settings.json /home/developer/.claude/settings.json
@@ -59,4 +62,25 @@ COPY browser-hook.sh /usr/local/share/cww/browser-hook.sh
 RUN chmod 755 /usr/local/share/cww/browser-hook.sh
 
 USER developer
+
+# Materialize the typescript-lsp plugin at build time so the first launch needs
+# no marketplace fetch (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is on, and a
+# workspace must reach the prompt with zero delays/prompts). 'marketplace add'
+# clones anthropics/claude-plugins-official (public, unauthenticated) into
+# ~/.claude/plugins/marketplaces/ and 'install' records it in
+# ~/.claude/plugins/installed_plugins.json — that state, plus the
+# extraKnownMarketplaces/enabledPlugins keys already baked in settings.json, is
+# all the plugin system needs at runtime. The server binary itself is the
+# npm-global typescript-language-server installed above.
+#
+# Running the claude CLI here also stamps volatile housekeeping (machineID,
+# migration flags, settings reformat) into ~/.claude.json and settings.json, so
+# re-COPY both afterwards: the baked configs stay byte-identical to this repo's,
+# and each workspace generates its own identifiers on first run.
+RUN claude plugin marketplace add anthropics/claude-plugins-official && \
+    claude plugin install typescript-lsp@claude-plugins-official && \
+    rm -rf /home/developer/.claude/backups
+COPY --chown=developer:developer claude-onboarding.json /home/developer/.claude.json
+COPY --chown=developer:developer settings.json /home/developer/.claude/settings.json
+
 ENV CWW_AGENT_CMD="claude --dangerously-skip-permissions"

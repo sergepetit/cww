@@ -377,7 +377,7 @@ Deliberately *not* included: compilers (`build-essential`) and build tools like 
 
 > **Note:** Google ships the Chrome `.deb` for amd64 only; arm64 hosts (e.g. Apple Silicon Macs building natively) get Chromium from the xtradeb PPA instead — same headful stack, same CDP port. The PPA is apt-pinned so only `chromium*` packages can come from it.
 
-The agent images add Claude Code (npm), Mistral Vibe (pipx), or OpenCode (npm) respectively. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`. For **one project** only, ship a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) in the repo — cww layers it on top of the agent image at create.
+The agent images add Claude Code (npm, plus [TypeScript code intelligence](#typescript-code-intelligence-lsp)), Mistral Vibe (pipx), or OpenCode (npm) respectively. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`. For **one project** only, ship a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) in the repo — cww layers it on top of the agent image at create.
 
 ## tmux keys
 
@@ -482,6 +482,15 @@ Notes:
 - Closing the browser's last window from noVNC is fine: it restarts automatically (log: `/tmp/cww-browser.log` in the container).
 - Display resolution defaults to 1920x1080; override with `CWW_BROWSER_RESOLUTION=<WxH>` in `~/.cww/env`.
 - Vibe's chrome-devtools entry is appended to the user config (`~/.vibe/config.toml`) at boot. **Caveat:** Vibe reads exactly one `config.toml` — if the repo commits a `.vibe/config.toml`, that (trusted) project config *replaces* the user config and the entry won't load. Such repos keep browser access by adding the same `[[mcp_servers]]` block to their own `.vibe/config.toml` (the entrypoint prints a reminder; the block is at `/usr/local/share/cww/vibe-mcp.toml` in the container). OpenCode has no such caveat: a repo-committed `opencode.json` *merges over* the baked global config, so the MCP entry survives.
+
+## TypeScript code intelligence (LSP)
+
+Claude workspaces ship with Claude Code's LSP tool active for TypeScript/JavaScript out of the box: the official `typescript-lsp` plugin and the `typescript-language-server` binary are baked into the claude image, so the agent gets go-to-definition, find-references, and type diagnostics (injected automatically after each edit) in any repo with a `tsconfig.json`/`package.json` — no setup, no first-run download. In non-TS repos the plugin sits idle. Vibe and OpenCode workspaces are unaffected (the plugin mechanism is Claude Code-specific); other languages remain a `.cww/Dockerfile` install away.
+
+Notes:
+
+- **Monorepos:** if workspace-root detection picks the wrong folder, the server can report false-positive errors. Committing a Claude Code LSP `workspaceFolder` override in the repo's own `.claude/` config fixes it.
+- **Token cost:** the after-edit diagnostics add context on every edit. If that's too chatty in a large project, the repo can disable it with `"diagnostics": false` in its own Claude Code LSP settings — see the [plugins reference](https://code.claude.com/docs/en/plugins-reference).
 
 ## Accessing the app in a browser
 

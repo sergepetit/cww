@@ -7,5 +7,16 @@
     "type": "command",
     "command": "/home/developer/.claude/statusline.sh",
     "padding": 0
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true
   }
 }
