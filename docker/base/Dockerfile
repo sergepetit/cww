@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg2 \
     openssl \
     jq \
+    bat \
     nano \
     vim \
     ripgrep \
@@ -149,6 +150,11 @@ RUN printf '%s\n' '' \
     '# cww: refreshed secrets, copied in by the host before each start' \
     'if [ -f "$HOME/.cww-env-refresh" ]; then set -a; . "$HOME/.cww-env-refresh"; set +a; fi' \
     >> /home/developer/.bashrc
+
+# Ubuntu renames some binaries to avoid name clashes with older packages
+# (bat -> batcat, fd -> fdfind); alias them back so the tools work under
+# their upstream names.
+RUN printf '%s\n' '' 'alias bat="batcat"' 'alias fd="fdfind"' >> /home/developer/.bashrc
 
 # Copy tmux config (staged into this build context by 'cww build'/install.sh)
 COPY tmux.conf /home/developer/.tmux.conf
