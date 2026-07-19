@@ -307,9 +307,10 @@ Print the `ssh -N -L …` command that forwards a running workspace's published 
 cww tunnel-command feature-auth                     # By workspace name
 cww tunnel-command                                  # From the repo directory (single workspace)
 cww tunnel-command feature-auth --host me@dev-box   # Override the SSH target
+cww tunnel-command feature-auth --terse | pbcopy    # Just the ssh command, ready to paste
 ```
 
-The SSH target defaults to `$USER@$(hostname -f)` (this machine); use `--host` to override it. Because the local side is the stable container port (not the possibly-ephemeral host port), you get **one fixed `localhost:<container-port>` origin** across every workspace — a browser [secure context](#accessing-the-app-in-a-browser) that stays constant even as Docker assigns different host ports per workspace.
+The SSH target defaults to `$USER@$(hostname -f)` (this machine); use `--host` to override it. `-t`/`--terse` prints only the `ssh` command with no surrounding explanation, for piping or scripting. Because the local side is the stable container port (not the possibly-ephemeral host port), you get **one fixed `localhost:<container-port>` origin** across every workspace — a browser [secure context](#accessing-the-app-in-a-browser) that stays constant even as Docker assigns different host ports per workspace.
 
 ### `cww cache <preset> | <name> <container-path>`
 

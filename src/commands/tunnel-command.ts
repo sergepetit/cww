@@ -20,11 +20,13 @@ Arguments:
 
 Options:
   --host <target>   SSH target to connect to (default: $USER@$(hostname))
+  -t, --terse       Print only the ssh command, no explanation
   -h, --help        Show this help message
 
 Examples:
   cww tunnel-command sandbox
   cww tunnel-command sandbox --host me@dev-box.internal
+  cww tunnel-command sandbox --terse | pbcopy
 `;
 
 export interface TunnelSpec {
@@ -62,11 +64,13 @@ export function buildTunnelSpec(map: PortBinding[]): TunnelSpec {
 export async function runTunnelCommand(argv: string[]): Promise<void> {
   let name: string | undefined;
   let sshHost = "";
+  let terse = false;
   try {
     const { values, positionals } = parseArgs({
       args: argv,
       options: {
         host: { type: "string" },
+        terse: { type: "boolean", short: "t", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
       allowPositionals: true,
@@ -76,6 +80,7 @@ export async function runTunnelCommand(argv: string[]): Promise<void> {
       return;
     }
     sshHost = values.host ?? "";
+    terse = values.terse;
     name = positionals[0];
   } catch (e) {
     die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
@@ -104,6 +109,11 @@ export async function runTunnelCommand(argv: string[]): Promise<void> {
   }
 
   const { forwards, locals, remapped } = buildTunnelSpec(portMap);
+
+  if (terse) {
+    console.log(`ssh -N${forwards} ${sshHost}`);
+    return;
+  }
 
   console.log(`Run this from the OTHER machine to reach ${ws.workspace}'s ports on its localhost:`);
   console.log("");
