@@ -22,6 +22,7 @@ description: Master index of the project's authored documentation
 - [workspace-skill-plan.md](workspace-skill-plan.md) — Inject a built-in cww skill into every workspace at create, so the agent knows it is running inside a cww workspace — which commands are host-side, how the environment is wired, and guided flows for authoring the repo's .cww/ config from within *(implemented — unit-tested; host Docker pass 2026-07-14)*
 - [export-skill-plan.md](export-skill-plan.md) — A cww export-skill command that shares one skill from the host's agent config with a project — a symlink into .cww/skills/ for future creates, plus live injection into running workspaces *(implemented (unit-tested; host Docker pass 2026-07-16))*
 - [cp-plan.md](cp-plan.md) — A cww cp command that copies files between the host and a running workspace, scp-style (ws:path), resolving the container name and handing pushed files to the in-container developer user *(implemented (unit-tested; host Docker pass 2026-07-16))*
+- [copilot-agent-plan.md](copilot-agent-plan.md) — Add GitHub Copilot CLI as a fourth agent, including its BYOK mode so a workspace can run against a third-party OpenAI-compatible endpoint (e.g. a LAN llama.cpp server) *(done — all four phases host-verified 2026-07-21, including BYOK against the real llama.cpp/Qwen host)*
 
 ## Meta
 

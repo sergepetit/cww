@@ -13,6 +13,7 @@ import { skillEnabled } from "../lib/config";
 import { copyDirIntoContainer } from "../lib/container-fs";
 import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
+import { copilotAgent } from "./copilot/agent";
 import { opencodeAgent } from "./opencode/agent";
 import { vibeAgent } from "./vibe/agent";
 import {
@@ -23,7 +24,7 @@ import {
 } from "./types";
 
 // The single registration point.
-const AGENTS = [claudeAgent, vibeAgent, opencodeAgent] as const;
+const AGENTS = [claudeAgent, vibeAgent, opencodeAgent, copilotAgent] as const;
 
 export type Agent = (typeof AGENTS)[number]["id"];
 export const CWW_AGENTS: readonly Agent[] = AGENTS.map((a) => a.id);
@@ -115,8 +116,9 @@ export function agentContainerEnv(
   agent: Agent,
   projectPath: string,
   env: Record<string, string | undefined> = process.env,
+  method?: AgentAuthMethod,
 ): Record<string, string> {
-  return byId.get(agent)?.containerEnv?.(projectPath, env) ?? {};
+  return byId.get(agent)?.containerEnv?.(projectPath, env, method) ?? {};
 }
 
 // Where the given agent keeps personal skills on the HOST ("~" expanded

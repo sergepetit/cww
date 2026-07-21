@@ -1,0 +1,15 @@
+// Copilot CLI settings (~/.copilot/config.json). The CLI writes its own state
+// here too (firstLaunchAt, ...) and merges rather than replaces, so a baked
+// value survives. Its own header calls the file automatically managed and
+// points at settings.json for user settings — but the folder-trust check is
+// read from THIS file, verified on the CLI 1.0.73 image: trustedFolders in
+// settings.json is migrated here only after the check has already fired.
+//
+// Without it, every first session opens on a blocking "Do you trust the files
+// in this folder?" dialog, which --allow-all-tools/-paths/-urls do NOT cover:
+// a fresh workspace would sit on that prompt inside tmux instead of on the
+// agent prompt. /workspace is the container's clone of the repo — exactly what
+// the workspace exists to work on.
+{
+  "trustedFolders": ["/workspace"]
+}

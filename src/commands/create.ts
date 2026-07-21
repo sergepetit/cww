@@ -617,7 +617,7 @@ export async function runCreate(argv: string[]): Promise<void> {
   // .cww/opencode.json), and that must happen before any metadata or
   // container is created.
   agentPreflight(agent, projectPath, method);
-  const agentEnv = agentContainerEnv(agent, projectPath);
+  const agentEnv = agentContainerEnv(agent, projectPath, process.env, method);
   // Ensures the agent image and layers the project's optional .cww/Dockerfile
   // on top. A build failure dies here, before any metadata or container
   // exists (writeSession runs below in both the fresh and recreate paths).

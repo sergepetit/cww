@@ -108,6 +108,36 @@ In `baseURL`, point at the Docker host's **LAN IP** — or better, map a name to
 
 The file is read at `cww create` time (like `~/.cww/hosts` and `~/.cww/env`): edits apply to the *next* created workspace, not running ones. Legacy escape hatch: a one-line `OPENCODE_CONFIG_CONTENT={...}` in `~/.cww/env` still works when no config file exists — cww forwards it into opencode workspaces; the file wins over it when both are present (cww warns).
 
+**1d. For the copilot agent — a GitHub token** so the Copilot CLI can run on your Copilot subscription:
+
+```bash
+echo 'COPILOT_GITHUB_TOKEN=github_pat_...' >> ~/.cww/env
+```
+
+Create a fine-grained personal access token with Copilot access at <https://github.com/settings/personal-access-tokens> — a `gho_...` OAuth token also works, but classic PATs (`ghp_...`) are rejected by the CLI. The env var is the supported headless auth: the CLI's interactive login stores into the OS keychain, which doesn't exist in a container, and cww never copies a host login in. (This is the agent credential only — the git token from [point 2](#authentication-setup) below stays separate, even when both are GitHub PATs.)
+
+Copilot workspaces run the CLI with `--no-remote`. The CLI can otherwise export a GitHub-backed session to GitHub web and mobile — readable there, and steerable from there — whenever your account allows it, which is the default. A cww workspace is a local sandbox, so cww opts out; if you want to follow or drive a session from your phone, drop the flag by overriding `CWW_AGENT_CMD` in the repo's [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile). BYOK workspaces are unaffected — they never talk to GitHub at all.
+
+Alternatively (**BYOK**, methods `provider` / `provider-key`), run Copilot against a **third-party OpenAI-compatible endpoint** — e.g. a llama.cpp `llama-server` on your LAN — with no GitHub credential or subscription at all. Two lines in `~/.cww/env` configure it:
+
+```bash
+COPILOT_PROVIDER_BASE_URL=http://llamahost:8080/v1
+COPILOT_MODEL=qwen3.6-35b-a3b     # a model id the endpoint serves (see /v1/models)
+```
+
+`--auth provider` injects no key at all; `--auth provider-key` additionally injects a `COPILOT_PROVIDER_API_KEY` for endpoints that require one (store it with `cww auth copilot --method provider-key`). `cww create` fails loudly when the endpoint or model is missing. BYOK workspaces run with `COPILOT_OFFLINE=true` — the CLI talks only to your endpoint, with no GitHub login nag and no telemetry; setting `COPILOT_OFFLINE` yourself in `~/.cww/env` overrides that default (the value is forwarded verbatim). Per-project overrides: `"providerBaseUrl"` / `"model"` in the project's `~/.cww/config.json` entry.
+
+Copilot only knows the context size of models in its own catalog, so a self-served model draws a *"not in the built-in catalog, using defaults"* notice at startup. Tell it what your server actually runs with:
+
+```bash
+COPILOT_PROVIDER_MAX_PROMPT_TOKENS=60000
+COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=8000
+```
+
+Those are part of a fixed set of **non-secret provider knobs forwarded verbatim** from `~/.cww/env` into BYOK workspaces — the rest are `COPILOT_PROVIDER_TYPE` (`openai` \| `azure` \| `anthropic`), `_WIRE_API`, `_TRANSPORT`, `_MODEL_ID`, `_WIRE_MODEL`, `_HEADERS` and `_AZURE_API_VERSION`; `copilot help providers` inside a workspace documents what each does. cww doesn't interpret them, and it forwards **only** these names — a misspelled variable is silently absent rather than silently ignored, so check the spelling if a setting seems to have no effect. They reach BYOK workspaces only: a `github-token` workspace gets `COPILOT_MODEL` and nothing else from this family, because the base URL alone would flip it into BYOK.
+
+For the base URL, the same networking rules as the opencode llama.cpp setup apply (see [1c](#authentication-setup) above): point at the Docker host's **LAN IP** or a name mapped in `~/.cww/hosts` — never the host's own hostname or `host.docker.internal`. The model must support **tool calling** and a generous context: the CLI's system prompt plus tool definitions are ~21k tokens, so serve with a large `n_ctx`, and keep the model id stable across swaps with `llama-server --alias <id>`.
+
 **2. A git token** so the container can clone the repo — and so you (or the agent) can commit and push over HTTPS from inside it. Nothing to prepare: **the first `cww create` in a repo runs the setup flow** — it shows the clone URL workspaces will use (derived from a remote — accept it, or type the exact URL for a self-hosted forge on plain http or a non-443 port), prompts for your platform login and a token (hidden input), and **validates the pair with a real `git ls-remote` before saving anything**. `cww auth git` re-runs the same flow whenever you need it (token rotation, URL change); `cww init` does too, adding a preflight of everything else a `cww create` needs (docker, agent auth, agent image).
 
 Setup writes two files:
@@ -120,7 +150,7 @@ Setup writes two files:
 
   `user:token` is used as HTTP basic auth and works with GitHub (classic/fine-grained PATs), Forgejo, and Gitea — use your **login username** for Forgejo/Gitea, `x-access-token` for GitHub fine-grained/App tokens. Make it a **fine-grained PAT scoped to the one repo** (contents read/write) where the platform supports it; `cww create` injects only the entry matching the workspace's clone URL, so a workspace never sees another repo's token. To share one token across a whole forge, hand-edit the entry down to `https://user:token@host`. Rotating a token = run `cww auth git` (or `cww init`) — see [Renewing a token](#renewing-a-token) for when existing workspaces pick it up.
 
-- `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"`, `"auth"`, `"browser"`, `"skill"`, `"model"`, and `"subagentModel"` overrides of the `~/.cww/env` globals (`"auth"` is where `cww create`/`cww init` record the interactively chosen auth method; `"model"`/`"subagentModel"` are claude-only — see [Configuration](#configuration)):
+- `~/.cww/config.json` — per-project settings keyed by the repo's absolute path: the clone URL, plus optional `"agent"`, `"auth"`, `"browser"`, `"skill"`, `"model"`, `"subagentModel"`, and `"providerBaseUrl"` overrides of the `~/.cww/env` globals (`"auth"` is where `cww create`/`cww init` record the interactively chosen auth method; `"model"` is the claude/copilot session model, `"subagentModel"` claude-only, `"providerBaseUrl"` the copilot BYOK endpoint — see [Configuration](#configuration)):
 
   ```json
   {
@@ -176,7 +206,7 @@ cww init --remote upstream     # Clone URL from a different remote
 
 Store or renew a credential — the command behind [Renewing a token](#renewing-a-token). The positional target picks what to update:
 
-- **An agent name** (or nothing — the default agent): the agent's auth token, user-wide in `~/.cww/env`. Prints how to obtain the secret, offers to run the agent's setup command when it's on your PATH (`claude setup-token` for claude), prompts for the paste with hidden input, sanity-checks the value (claude tokens start with `sk-ant-oat01-`), and upserts the line in place — comments and other entries in the file survive. Agents with several key-storing methods (claude's `oauth-token`/`api-key`, opencode's provider keys) ask which one, or take `--method <m>` (tab-completes per agent, e.g. `anthropic-api-key`); the keyless methods (`none`, `config-file`) store nothing and aren't offered.
+- **An agent name** (or nothing — the default agent): the agent's auth token, user-wide in `~/.cww/env`. Prints how to obtain the secret, offers to run the agent's setup command when it's on your PATH (`claude setup-token` for claude), prompts for the paste with hidden input, sanity-checks the value (claude tokens start with `sk-ant-oat01-`), and upserts the line in place — comments and other entries in the file survive. Agents with several key-storing methods (claude's `oauth-token`/`api-key`, opencode's provider keys, copilot's `github-token`/`provider-key`) ask which one, or take `--method <m>` (tab-completes per agent, e.g. `anthropic-api-key`); the keyless methods (`none`, `config-file`, `provider`) store nothing and aren't offered.
 - **`git`**: this repo's git credential in `~/.cww/credentials` — the same prompt-validate-store flow as `cww init` (existing URL and user offered as defaults, `git ls-remote` validation), without init's machine preflight.
 - **`KEY=VALUE`**: non-interactive upsert of one line into `~/.cww/env` — the escape hatch for scripts. A key no agent declares is stored with a warning: such keys reach containers at create time only.
 
@@ -186,6 +216,7 @@ It ends by listing the workspaces that use the credential: stopped ones pick it 
 cww auth                                  # renew the default agent's token
 cww auth claude                           # explicit agent
 cww auth opencode --method openai-api-key
+cww auth copilot                          # GitHub token (fine-grained PAT / gho_)
 cww auth git                              # rotate this repo's PAT
 cww auth MISTRAL_API_KEY=...              # non-interactive
 ```
@@ -194,9 +225,9 @@ cww auth MISTRAL_API_KEY=...              # non-interactive
 
 Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. **The first create in a repo runs the setup flow inline** (clone URL + validated git token — see [Authentication setup](#authentication-setup)); later creates reuse the stored config. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also builds the project's optional [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) on top of the agent image, runs the project's optional `.cww/reset.sh` (if present), loads the [built-in workspace skill](#the-built-in-workspace-skill), copies your personal `.cww/skills/` into the container for whichever agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
 
-`--agent <claude|vibe|opencode>` picks the coding agent (default: the project's `"agent"` in `~/.cww/config.json`, then `CWW_AGENT` from `~/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
+`--agent <claude|vibe|opencode|copilot>` picks the coding agent (default: the project's `"agent"` in `~/.cww/config.json`, then `CWW_AGENT` from `~/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
 
-`--auth <method>` picks how the workspace's agent authenticates — the workspace receives **exactly that method's credential and nothing else** (see [Authentication setup](#authentication-setup)). Methods per agent: claude `oauth-token | api-key | none`, vibe `api-key | config-file`, opencode `anthropic-api-key | openai-api-key | openrouter-api-key | opencode-api-key | config-file`. Resolution mirrors `--agent`: the flag, then the project's `"auth"` in `~/.cww/config.json`, then `CWW_AUTH` from `~/.cww/env`; with nothing configured, the agent's default method applies when its key is already stored, and otherwise create **asks once** and records the answer in the project's config. If the chosen method's key isn't stored yet, create hands off to the [`cww auth`](#cww-auth-agentgitkeyvalue-options) store flow inline. Like the agent, the method is recorded in the workspace's metadata and survives recreates.
+`--auth <method>` picks how the workspace's agent authenticates — the workspace receives **exactly that method's credential and nothing else** (see [Authentication setup](#authentication-setup)). Methods per agent: claude `oauth-token | api-key | none`, vibe `api-key | config-file`, opencode `anthropic-api-key | openai-api-key | openrouter-api-key | opencode-api-key | config-file`, copilot `github-token | provider | provider-key`. Resolution mirrors `--agent`: the flag, then the project's `"auth"` in `~/.cww/config.json`, then `CWW_AUTH` from `~/.cww/env`; with nothing configured, the agent's default method applies when its key is already stored, and otherwise create **asks once** and records the answer in the project's config. If the chosen method's key isn't stored yet, create hands off to the [`cww auth`](#cww-auth-agentgitkeyvalue-options) store flow inline. Like the agent, the method is recorded in the workspace's metadata and survives recreates.
 
 ```bash
 cww create feature-auth               # From within a git repo (workspace named "feature-auth")
@@ -205,6 +236,7 @@ cww create /path/to/project bugfix    # With full project path
 cww create review --branch main       # Check out main instead of the host's current branch
 cww create sandbox --agent vibe       # Run Mistral Vibe instead of the default agent
 cww create sandbox --agent opencode   # ... or OpenCode
+cww create local --agent copilot --auth provider   # Copilot on a BYOK endpoint (e.g. llama.cpp)
 cww create metered --auth api-key     # Claude Code on metered API billing (explicit opt-in)
 cww create feature-auth --no-attach   # Create without attaching to tmux
 ```
@@ -335,6 +367,7 @@ Build or rebuild a per-agent Docker image. With no argument it builds the config
 cww build            # the default agent's image
 cww build vibe       # coder-workspace-workflow:vibe
 cww build opencode   # coder-workspace-workflow:opencode
+cww build copilot    # coder-workspace-workflow:copilot
 cww build all        # every agent
 ```
 
@@ -364,11 +397,11 @@ Your project repo is never modified or used as a worktree. Per-workspace state l
 
 ## Docker image
 
-There is one image per coding agent, layered on a shared base image: `docker/base/Dockerfile` builds the common environment (tagged `cww-base:latest`, a local-only tag), and each agent's self-contained `src/agents/<name>/Dockerfile` builds `FROM` it, installing the agent's CLI and baking its config. `cww build [claude|vibe|opencode|all]` builds them — always base first, then the agent (a no-op base rebuild takes seconds thanks to the layer cache); a missing image is also offered for building on first `cww create --agent <name>`.
+There is one image per coding agent, layered on a shared base image: `docker/base/Dockerfile` builds the common environment (tagged `cww-base:latest`, a local-only tag), and each agent's self-contained `src/agents/<name>/Dockerfile` builds `FROM` it, installing the agent's CLI and baking its config. `cww build [claude|vibe|opencode|copilot|all]` builds them — always base first, then the agent (a no-op base rebuild takes seconds thanks to the layer cache); a missing image is also offered for building on first `cww create --agent <name>`.
 
 The shared base includes:
 - Ubuntu 26.04 (shell is bash)
-- Node.js 20
+- Node.js 22
 - Bun (so cww itself can be developed in a workspace)
 - Java 25 (Eclipse Temurin)
 - Google Chrome (amd64) / Chromium (arm64, via the xtradeb PPA) + Xvfb + noVNC — the [built-in headful browser](#built-in-headful-browser) the agent drives and you can watch/take over
@@ -378,7 +411,7 @@ Deliberately *not* included: compilers (`build-essential`) and build tools like 
 
 > **Note:** Google ships the Chrome `.deb` for amd64 only; arm64 hosts (e.g. Apple Silicon Macs building natively) get Chromium from the xtradeb PPA instead — same headful stack, same CDP port. The PPA is apt-pinned so only `chromium*` packages can come from it.
 
-The agent images add Claude Code (npm, plus [TypeScript code intelligence](#typescript-code-intelligence-lsp)), Mistral Vibe (pipx), or OpenCode (npm) respectively. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`. For **one project** only, ship a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) in the repo — cww layers it on top of the agent image at create.
+The agent images add Claude Code (npm, plus [TypeScript code intelligence](#typescript-code-intelligence-lsp)), Mistral Vibe (pipx), OpenCode (npm), or the GitHub Copilot CLI (npm) respectively. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`. For **one project** only, ship a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) in the repo — cww layers it on top of the agent image at create.
 
 ## tmux keys
 
@@ -458,12 +491,12 @@ RUN sudo apt-get update && sudo apt-get install -y build-essential
 
 Skills are the open [Agent Skills](https://agentskills.io) format (a folder with a `SKILL.md`), so the same skill works with every agent. Commands and agents are Claude Code file formats: Vibe's equivalents are skills with `user-invocable: true` (which become slash commands) and TOML agent configs; OpenCode's are its own markdown commands/agents with different frontmatter. cww makes these available in a workspace in two tiers:
 
-- **Team (committed in the repo):** each agent reads its own committed locations, and they ride the in-container clone automatically — nothing special to configure. Claude Code reads `.claude/skills/` (plus `.claude/commands/`, `.claude/agents/`); Vibe reads `.vibe/skills/` or `.agents/skills/`; OpenCode reads `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`. Claude Code does *not* read the generic `.agents/skills/`, so a repo serving all agents commits `.claude/skills/` plus a location Vibe reads (an in-repo relative symlink like `.vibe/skills -> ../.claude/skills` rides the clone too). Other repo-committed config — like a `.vibe/config.toml` or an `opencode.json` — rides the clone like any other file.
-- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container at `cww create`. `.cww/skills/` loads for whichever agent the workspace runs — into `~/.claude/skills` for Claude Code, `~/.vibe/skills` for Vibe, `~/.config/opencode/skills` for OpenCode. `.cww/commands/` and `.cww/agents/` are copied only for claude workspaces; vibe and opencode workspaces print a one-line skip notice for them. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`) — the copy dereferences symlinks host-side, so the real files land in the container — or share a single skill with [`cww export-skill`](#cww-export-skill-skill-name-workspace-name-options), which also pushes it into workspaces that are already running. These are usually gitignored.
+- **Team (committed in the repo):** each agent reads its own committed locations, and they ride the in-container clone automatically — nothing special to configure. Claude Code reads `.claude/skills/` (plus `.claude/commands/`, `.claude/agents/`); Vibe reads `.vibe/skills/` or `.agents/skills/`; OpenCode reads `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`; the Copilot CLI reads `.github/skills/`, `.claude/skills/`, or `.agents/skills/`. Claude Code does *not* read the generic `.agents/skills/`, so a repo serving all agents commits `.claude/skills/` plus a location Vibe reads (an in-repo relative symlink like `.vibe/skills -> ../.claude/skills` rides the clone too). Other repo-committed config — like a `.vibe/config.toml` or an `opencode.json` — rides the clone like any other file.
+- **Personal (per-project, not committed):** anything under the project's `.cww/{skills,commands,agents}/` is copied into the container at `cww create`. `.cww/skills/` loads for whichever agent the workspace runs — into `~/.claude/skills` for Claude Code, `~/.vibe/skills` for Vibe, `~/.config/opencode/skills` for OpenCode, `~/.copilot/skills` for Copilot. `.cww/commands/` and `.cww/agents/` are copied only for claude workspaces; the other agents' workspaces print a one-line skip notice for them. The folder's mere presence is the opt-in — there's no flag. Populate it by dropping files in, symlink your global set (e.g. `ln -s ~/.claude/skills .cww/skills`) — the copy dereferences symlinks host-side, so the real files land in the container — or share a single skill with [`cww export-skill`](#cww-export-skill-skill-name-workspace-name-options), which also pushes it into workspaces that are already running. These are usually gitignored.
 
 ### The built-in workspace skill
 
-Every workspace also gets a built-in `cww` skill (same Agent Skills format), loaded at create into the agent's skills dir as `cww/` — `~/.claude/skills/cww`, `~/.vibe/skills/cww`, or `~/.config/opencode/skills/cww`. It tells the agent it is running inside a cww workspace: how the environment is wired (sibling service containers, loopback-published ports it can't see from inside, the built-in browser), that every `cww` command is host-side (so it answers "how do I reset the data?" with *"on your host machine, run `cww reset …`"* instead of inventing docker commands), the git ground rules, and guided flows for authoring the repo's `.cww/` config from inside — including the loop that makes such changes take effect (commit + push, you pull on the host, then run the applying command there).
+Every workspace also gets a built-in `cww` skill (same Agent Skills format), loaded at create into the agent's skills dir as `cww/` — `~/.claude/skills/cww`, `~/.vibe/skills/cww`, `~/.config/opencode/skills/cww`, or `~/.copilot/skills/cww`. It tells the agent it is running inside a cww workspace: how the environment is wired (sibling service containers, loopback-published ports it can't see from inside, the built-in browser), that every `cww` command is host-side (so it answers "how do I reset the data?" with *"on your host machine, run `cww reset …`"* instead of inventing docker commands), the git ground rules, and guided flows for authoring the repo's `.cww/` config from inside — including the loop that makes such changes take effect (commit + push, you pull on the host, then run the applying command there).
 
 For factual reference the skill bundles this user guide plus [accessing-services.md](accessing-services.md) and [git-strategy.md](git-strategy.md) as skill references, copied from the installed cww's `docs/` at create time — a workspace always carries the docs matching the cww version that created it (one created before an upgrade keeps its old copy until recreated).
 
@@ -473,7 +506,7 @@ Disable it with `CWW_SKILL=off` in `~/.cww/env` (global) or `"skill": "off"` in 
 
 Every workspace container runs a real, visible browser (Google Chrome on amd64, Chromium on arm64) on a virtual display (Xvfb), shared by the agent and you:
 
-- **The agent drives it.** All agents come with the [Chrome DevTools MCP server](https://github.com/ChromeDevTools/chrome-devtools-mcp) preconfigured, attached to that browser over CDP (`127.0.0.1:9222`, container-internal only) — baked into `~/.claude.json` on claude images, appended to `~/.vibe/config.toml` at boot on vibe images, baked into `~/.config/opencode/opencode.json` on opencode images. The agent can navigate, click, fill forms, read the console, take screenshots — no setup.
+- **The agent drives it.** All agents come with the [Chrome DevTools MCP server](https://github.com/ChromeDevTools/chrome-devtools-mcp) preconfigured, attached to that browser over CDP (`127.0.0.1:9222`, container-internal only) — baked into `~/.claude.json` on claude images, appended to `~/.vibe/config.toml` at boot on vibe images, baked into `~/.config/opencode/opencode.json` on opencode images, baked into `~/.copilot/mcp-config.json` on copilot images. The agent can navigate, click, fill forms, read the console, take screenshots — no setup.
 - **You watch and take over the same browser** via noVNC on container port 7900, published like any service port (loopback-only, Docker-assigned host port — check `cww list`). Open `http://localhost:<host-port>/vnc.html?autoconnect=1&resize=scale` on the docker host, or from another machine through [`cww tunnel-command`](#cww-tunnel-command-workspace-name) and then `http://localhost:7900/vnc.html?autoconnect=1&resize=scale`. Type a login or 2FA code into the page the agent is stuck on, watch what it's doing in real time, then disconnect — the browser (and the agent) keep going. Because each workspace has its own browser, you can hop between workspaces by just switching tabs.
 
 Notes:
@@ -486,7 +519,7 @@ Notes:
 
 ## TypeScript code intelligence (LSP)
 
-Claude workspaces ship with Claude Code's LSP tool active for TypeScript/JavaScript out of the box: the official `typescript-lsp` plugin and the `typescript-language-server` binary are baked into the claude image, so the agent gets go-to-definition, find-references, and type diagnostics (injected automatically after each edit) in any repo with a `tsconfig.json`/`package.json` — no setup, no first-run download. In non-TS repos the plugin sits idle. Vibe and OpenCode workspaces are unaffected (the plugin mechanism is Claude Code-specific); other languages remain a `.cww/Dockerfile` install away.
+Claude workspaces ship with Claude Code's LSP tool active for TypeScript/JavaScript out of the box: the official `typescript-lsp` plugin and the `typescript-language-server` binary are baked into the claude image, so the agent gets go-to-definition, find-references, and type diagnostics (injected automatically after each edit) in any repo with a `tsconfig.json`/`package.json` — no setup, no first-run download. In non-TS repos the plugin sits idle. Vibe, OpenCode, and Copilot workspaces are unaffected (the plugin mechanism is Claude Code-specific); other languages remain a `.cww/Dockerfile` install away.
 
 Notes:
 
@@ -521,6 +554,10 @@ Because the tunnel's local side is the stable container port, you keep **one** b
 | `CWW_BROWSER_RESOLUTION` | `1920x1080` | Virtual display size of the built-in browser (`<width>x<height>`) |
 | `ANTHROPIC_MODEL` | *(Claude Code's default)* | Session model for new claude workspaces, alias or full id — e.g. `opus`, `claude-opus-4-8` (set in `~/.cww/env`; per project use `"model"` in `~/.cww/config.json`). Applies at create/recreate, not restart; `/model` inside the workspace still wins |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | *(Claude Code's default)* | Model Claude Code subagents/workflows run on in new claude workspaces (set in `~/.cww/env`; per project use `"subagentModel"` in `~/.cww/config.json`). Applies at create/recreate, not restart |
+| `COPILOT_MODEL` | *(GitHub's default; required for BYOK)* | Model for new copilot workspaces (set in `~/.cww/env`; per project use `"model"` in `~/.cww/config.json`). Applies at create/recreate, not restart |
+| `COPILOT_PROVIDER_BASE_URL` | *(unset — GitHub's models)* | BYOK endpoint for new copilot workspaces created with `--auth provider`/`provider-key` — see [1d](#authentication-setup) (set in `~/.cww/env`; per project use `"providerBaseUrl"` in `~/.cww/config.json`). Applies at create/recreate |
+| `COPILOT_OFFLINE` | `true` *for BYOK workspaces, else unset* | Forwarded verbatim into copilot BYOK workspaces when set, overriding the offline-by-default — see [1d](#authentication-setup) |
+| `COPILOT_PROVIDER_*` | *(unset)* | Non-secret BYOK knobs — `_MAX_PROMPT_TOKENS`, `_MAX_OUTPUT_TOKENS`, `_TYPE`, `_WIRE_API`, `_TRANSPORT`, `_MODEL_ID`, `_WIRE_MODEL`, `_HEADERS`, `_AZURE_API_VERSION` — forwarded verbatim into copilot BYOK workspaces, see [1d](#authentication-setup). Applies at create/recreate |
 
 ### Passing env to workspaces
 

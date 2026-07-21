@@ -20,12 +20,13 @@ import {
   validateAgent,
 } from "../src/agents/registry";
 import { claudeContainerEnv } from "../src/agents/claude/agent";
+import { copilotAgent, copilotContainerEnv } from "../src/agents/copilot/agent";
 import { opencodeAgent, opencodeContainerEnv, resolveOpencodeConfigFile } from "../src/agents/opencode/agent";
 import { PERSONAL_ASSET_KINDS } from "../src/agents/types";
 
 describe("CWW_AGENTS", () => {
   test("lists the registered agents in registration order", () => {
-    expect([...CWW_AGENTS]).toEqual(["claude", "vibe", "opencode"]);
+    expect([...CWW_AGENTS]).toEqual(["claude", "vibe", "opencode", "copilot"]);
   });
 });
 
@@ -67,6 +68,7 @@ describe("agentLabel / agentImage", () => {
     expect(agentLabel("claude")).toBe("Claude Code");
     expect(agentLabel("vibe")).toBe("Mistral Vibe");
     expect(agentLabel("opencode")).toBe("OpenCode");
+    expect(agentLabel("copilot")).toBe("GitHub Copilot");
   });
 
   test("an unknown agent falls back to its own name", () => {
@@ -77,6 +79,7 @@ describe("agentLabel / agentImage", () => {
     expect(agentImage("claude")).toBe("coder-workspace-workflow:claude");
     expect(agentImage("vibe")).toBe("coder-workspace-workflow:vibe");
     expect(agentImage("opencode")).toBe("coder-workspace-workflow:opencode");
+    expect(agentImage("copilot")).toBe("coder-workspace-workflow:copilot");
   });
 });
 
@@ -117,6 +120,11 @@ describe("authMethods", () => {
       ["opencode-api-key", "OPENCODE_API_KEY"],
       ["config-file", undefined],
     ]);
+    expect(agentAuthMethods("copilot").map((m) => [m.id, m.envKey])).toEqual([
+      ["github-token", "COPILOT_GITHUB_TOKEN"],
+      ["provider", undefined],
+      ["provider-key", "COPILOT_PROVIDER_API_KEY"],
+    ]);
   });
 
   test("agentAuthEnvKeys drops keyless methods", () => {
@@ -140,6 +148,8 @@ describe("authMethods", () => {
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
         "OPENCODE_API_KEY",
+        "COPILOT_GITHUB_TOKEN",
+        "COPILOT_PROVIDER_API_KEY",
       ].sort(),
     );
   });
@@ -183,6 +193,14 @@ describe("personalAssetPlan", () => {
     });
   });
 
+  test("copilot takes skills (portable format) and skips the Claude-only kinds", () => {
+    const dir = projectWith("skills", "commands", "agents");
+    expect(personalAssetPlan(dir, "copilot")).toEqual({
+      copies: [{ kind: "skills", src: path.join(dir, ".cww", "skills"), dest: "/home/developer/.copilot/skills" }],
+      skipped: ["commands", "agents"],
+    });
+  });
+
   test("a skills-only project skips nothing for vibe", () => {
     const dir = projectWith("skills");
     const plan = personalAssetPlan(dir, "vibe");
@@ -214,6 +232,7 @@ describe("builtinSkillPlan", () => {
     expect(builtinSkillPlan("opencode", {})?.dest).toBe(
       "/home/developer/.config/opencode/skills/cww",
     );
+    expect(builtinSkillPlan("copilot", {})?.dest).toBe("/home/developer/.copilot/skills/cww");
   });
 
   test("the source is the install's templates/skills/cww, carrying SKILL.md", () => {
@@ -332,6 +351,19 @@ describe("opencode config file", () => {
     expect(agentContainerEnv("vibe", project, {})).toEqual({});
   });
 
+  test("the dispatch's optional auth-method argument leaves method-blind agents unchanged", () => {
+    // Agents whose hook depends on the chosen method (e.g. BYOK-only vars)
+    // receive it as containerEnv's third parameter; the existing agents
+    // ignore it, so passing one must be a no-op for them.
+    const project = dirWithConfig(CONFIG);
+    const method = { id: "api-key", envKey: "ANTHROPIC_API_KEY" };
+    expect(agentContainerEnv("opencode", project, {}, method)).toEqual(
+      agentContainerEnv("opencode", project, {}),
+    );
+    expect(agentContainerEnv("claude", project, {}, method)).toEqual({});
+    expect(agentContainerEnv("vibe", project, {}, method)).toEqual({});
+  });
+
   test("preflight of the config-file method accepts the config file (warn-and-continue)", () => {
     const project = dirWithConfig(CONFIG);
     const configFileMethod = opencodeAgent.authMethods.find((m) => m.id === "config-file")!;
@@ -421,5 +453,154 @@ describe("claude model config", () => {
     const other = project();
     const file = configWith(other, { model: "opus" });
     expect(claudeContainerEnv(p, {}, file)).toEqual({});
+  });
+});
+
+describe("copilot provider config", () => {
+  // Same throwaway project/config.json helpers as the claude model tests.
+  function project(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+  }
+  function configWith(projectPath: string, entry?: Record<string, unknown>): string {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-")), "config.json");
+    if (entry) {
+      const key = fs.realpathSync(projectPath);
+      fs.writeFileSync(file, JSON.stringify({ projects: { [key]: entry } }));
+    }
+    return file;
+  }
+
+  const provider = copilotAgent.authMethods.find((m) => m.id === "provider")!;
+  const providerKey = copilotAgent.authMethods.find((m) => m.id === "provider-key")!;
+  const githubToken = copilotAgent.authMethods.find((m) => m.id === "github-token")!;
+  const BYOK_ENV = {
+    COPILOT_PROVIDER_BASE_URL: "http://llamahost:8080/v1",
+    COPILOT_MODEL: "qwen3.6-35b-a3b",
+  };
+
+  test("BYOK methods get the endpoint, the model, and offline by default", () => {
+    const p = project();
+    const file = configWith(p);
+    for (const method of [provider, providerKey]) {
+      expect(copilotContainerEnv(p, BYOK_ENV, method, file)).toEqual({
+        COPILOT_MODEL: "qwen3.6-35b-a3b",
+        COPILOT_PROVIDER_BASE_URL: "http://llamahost:8080/v1",
+        COPILOT_OFFLINE: "true",
+      });
+    }
+  });
+
+  test("github-token gets the model only — the base URL would hijack it into BYOK", () => {
+    const p = project();
+    expect(copilotContainerEnv(p, BYOK_ENV, githubToken, configWith(p))).toEqual({
+      COPILOT_MODEL: "qwen3.6-35b-a3b",
+    });
+    // No method (older callers) is treated the same as a non-BYOK one.
+    expect(copilotContainerEnv(p, BYOK_ENV, undefined, configWith(p))).toEqual({
+      COPILOT_MODEL: "qwen3.6-35b-a3b",
+    });
+  });
+
+  test("an explicit COPILOT_OFFLINE is forwarded verbatim instead of the default", () => {
+    const p = project();
+    const env = { ...BYOK_ENV, COPILOT_OFFLINE: "false" };
+    expect(copilotContainerEnv(p, env, provider, configWith(p)).COPILOT_OFFLINE).toBe("false");
+  });
+
+  test("project config beats the global env, per field", () => {
+    const p = project();
+    const file = configWith(p, { providerBaseUrl: "http://other:9090/v1" });
+    expect(copilotContainerEnv(p, BYOK_ENV, provider, file)).toEqual({
+      COPILOT_MODEL: "qwen3.6-35b-a3b",
+      COPILOT_PROVIDER_BASE_URL: "http://other:9090/v1",
+      COPILOT_OFFLINE: "true",
+    });
+  });
+
+  test("nothing configured injects only the offline default for BYOK, nothing for github-token", () => {
+    const p = project();
+    expect(copilotContainerEnv(p, {}, provider, configWith(p))).toEqual({ COPILOT_OFFLINE: "true" });
+    expect(copilotContainerEnv(p, {}, githubToken, configWith(p))).toEqual({});
+  });
+
+  test("empty strings don't leak into the container", () => {
+    const p = project();
+    const env = { COPILOT_PROVIDER_BASE_URL: "", COPILOT_MODEL: "" };
+    expect(copilotContainerEnv(p, env, githubToken, configWith(p))).toEqual({});
+  });
+
+  test("the non-secret BYOK knobs are forwarded verbatim, secrets and unknowns are not", () => {
+    const p = project();
+    const env = {
+      ...BYOK_ENV,
+      COPILOT_PROVIDER_MAX_PROMPT_TOKENS: "60000",
+      COPILOT_PROVIDER_TYPE: "openai",
+      COPILOT_PROVIDER_HEADERS: "X-Tenant-Id: mai",
+      COPILOT_PROVIDER_MAX_PROMT_TOKENS: "typo", // not forwarded — allowlist, not prefix
+      COPILOT_PROVIDER_API_KEY: "sk-secret", // rides the auth channel, never this one
+      COPILOT_PROVIDER_BEARER_TOKEN: "bearer-secret",
+    };
+    expect(copilotContainerEnv(p, env, provider, configWith(p))).toEqual({
+      COPILOT_MODEL: "qwen3.6-35b-a3b",
+      COPILOT_PROVIDER_BASE_URL: "http://llamahost:8080/v1",
+      COPILOT_OFFLINE: "true",
+      COPILOT_PROVIDER_MAX_PROMPT_TOKENS: "60000",
+      COPILOT_PROVIDER_TYPE: "openai",
+      COPILOT_PROVIDER_HEADERS: "X-Tenant-Id: mai",
+    });
+  });
+
+  test("the BYOK knobs stay out of a github-token workspace", () => {
+    const p = project();
+    const env = { ...BYOK_ENV, COPILOT_PROVIDER_TYPE: "azure", COPILOT_PROVIDER_MAX_OUTPUT_TOKENS: "8000" };
+    expect(copilotContainerEnv(p, env, githubToken, configWith(p))).toEqual({
+      COPILOT_MODEL: "qwen3.6-35b-a3b",
+    });
+  });
+
+  test("preflight accepts a configured BYOK endpoint (warn-and-continue for the keyless method)", () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(copilotAgent.preflight(project(), BYOK_ENV, provider)).toBeUndefined();
+      const output = log.mock.calls.flat().join("\n");
+      expect(output).toContain("No key injected");
+      expect(output).toContain("http://llamahost:8080/v1");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("preflight nudges toward provider-key when a key is stored but 'provider' was chosen", () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      copilotAgent.preflight(project(), { ...BYOK_ENV, COPILOT_PROVIDER_API_KEY: "k" }, provider);
+      expect(log.mock.calls.flat().join("\n")).toContain("provider-key");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("preflight ignores BYOK prerequisites for github-token", () => {
+    expect(copilotAgent.preflight(project(), {}, githubToken)).toBeUndefined();
+  });
+
+  test("a BYOK method without endpoint/model dies loudly, naming the missing vars", () => {
+    // process.exit path — probe in a subprocess, like the opencode JSON test.
+    const p = project();
+    const agentMod = path.join(import.meta.dir, "..", "src", "agents", "copilot", "agent.ts");
+    const r = Bun.spawnSync({
+      cmd: [
+        "bun",
+        "-e",
+        `const { copilotAgent } = await import(${JSON.stringify(agentMod)}); copilotAgent.preflight(${JSON.stringify(p)}, {}, { id: "provider" })`,
+      ],
+      stderr: "pipe",
+      env: { ...process.env, HOME: p }, // no real ~/.cww/config.json in reach
+    });
+    expect(r.exitCode).toBe(1);
+    const stderr = new TextDecoder().decode(r.stderr);
+    expect(stderr).toContain("COPILOT_PROVIDER_BASE_URL");
+    expect(stderr).toContain("COPILOT_MODEL");
+    expect(stderr).toContain("providerBaseUrl");
   });
 });

@@ -74,9 +74,12 @@ export interface AgentDefinition<Id extends string = string> {
   // Optional: extra env vars to set on the workspace container at create
   // time, rendered into the generated compose config (an 'environment:'
   // entry overrides the env_file). May die() on invalid user config — it
-  // runs alongside preflight, before anything is created.
+  // runs alongside preflight, before anything is created. `method` is the
+  // workspace's chosen auth method, for agents whose env depends on it
+  // (e.g. vars that must only reach BYOK workspaces).
   containerEnv?(
     projectPath: string,
     env: Record<string, string | undefined>,
+    method?: AgentAuthMethod,
   ): Record<string, string>;
 }

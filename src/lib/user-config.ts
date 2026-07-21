@@ -22,7 +22,8 @@
 // of re-deriving. agent, auth, browser, skill, model, and subagentModel are
 // optional per-project overrides of the ~/.cww/env globals (auth is the
 // method id new workspaces authenticate with — 'cww create' records the
-// interactive answer here; model/subagentModel are Claude-only, hand-edited).
+// interactive answer here; model, subagentModel, and providerBaseUrl are
+// per-agent model settings, hand-edited).
 // Secrets never live here: tokens go in ~/.cww/credentials and ~/.cww/env.
 
 import fs from "node:fs";
@@ -37,8 +38,9 @@ export interface ProjectConfig {
   auth?: string; // auth method id for the project's agent (see agent-env-scoping-plan)
   browser?: string;
   skill?: string;
-  model?: string; // Claude session model, over the ANTHROPIC_MODEL global
+  model?: string; // agent session model (claude: over ANTHROPIC_MODEL; copilot: over COPILOT_MODEL)
   subagentModel?: string; // Claude subagent/workflow model, over CLAUDE_CODE_SUBAGENT_MODEL
+  providerBaseUrl?: string; // Copilot BYOK endpoint, over COPILOT_PROVIDER_BASE_URL
   [key: string]: unknown; // unknown fields survive a read-modify-write
 }
 

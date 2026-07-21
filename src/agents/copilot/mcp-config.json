@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": "chrome-devtools-mcp",
+      "args": ["--browser-url=http://127.0.0.1:9222", "--usage-statistics=false"],
+      "tools": ["*"]
+    }
+  }
+}

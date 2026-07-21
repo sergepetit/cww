@@ -17,7 +17,8 @@
 # the migration was announced), so apt works the same on both architectures.
 FROM ubuntu:26.04
 
-ARG NODE_VERSION=20
+# 22+: the Copilot CLI agent's floor; Node 20 hit EOL 2026-04-30.
+ARG NODE_VERSION=22
 ARG JAVA_VERSION=25
 ARG TZ=UTC
 

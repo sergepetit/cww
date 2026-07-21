@@ -87,11 +87,15 @@ describe("sessionAuthKeys", () => {
       "CLAUDE_CODE_OAUTH_TOKEN",
     ]);
     expect(sessionAuthKeys({ agent: "claude", auth: "api-key" })).toEqual(["ANTHROPIC_API_KEY"]);
+    expect(sessionAuthKeys({ agent: "copilot", auth: "provider-key" })).toEqual([
+      "COPILOT_PROVIDER_API_KEY",
+    ]);
   });
 
   test("a keyless method refreshes no agent secret at all", () => {
     expect(sessionAuthKeys({ agent: "claude", auth: "none" })).toEqual([]);
     expect(sessionAuthKeys({ agent: "vibe", auth: "config-file" })).toEqual([]);
+    expect(sessionAuthKeys({ agent: "copilot", auth: "provider" })).toEqual([]);
   });
 
   test("sessions without a recorded method fall back to the agent's key list", () => {
