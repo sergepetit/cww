@@ -49,7 +49,7 @@ Commands:
   list                    List all workspaces
   tunnel-command [name]   Print the ssh command to reach a workspace's ports
   cache <preset|name>     Provision a shared dependency-cache dir (npm, m2, …)
-  build [agent|all]       Build/rebuild a per-agent Docker image (claude | vibe | opencode)
+  build [agent|all]       Build/rebuild a per-agent Docker image (claude | vibe | opencode | copilot)
   help                    Show this help message
 
 Run 'cww <command> --help' for more information on a command.

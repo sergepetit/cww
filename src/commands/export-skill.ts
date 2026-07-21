@@ -38,7 +38,8 @@ Arguments:
 
 Options:
   --from <agent>   Host agent config to take the skill from (claude | vibe |
-                   opencode); needed only when several configs have the name
+                   opencode | copilot); needed only when several configs have
+                   the name
   --copy           Copy into .cww/skills/ instead of symlinking (a snapshot
                    that no longer follows the host version)
   -h, --help       Show this help message

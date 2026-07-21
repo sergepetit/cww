@@ -64,7 +64,8 @@ Options:
                     (default: the branch you're currently on; a name that
                     doesn't exist upstream is created fresh)
   --ref <ref>       Alias for --branch
-  --agent <name>    Coding agent to run in the workspace: claude | vibe | opencode
+  --agent <name>    Coding agent to run in the workspace: claude | vibe |
+                    opencode | copilot
                     (default: this project's agent in ~/.cww/config.json,
                     then CWW_AGENT from ~/.cww/env, falling back to claude)
   --auth <method>   How the workspace's agent authenticates — exactly one
