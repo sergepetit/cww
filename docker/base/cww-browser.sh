@@ -8,9 +8,24 @@
 #
 # Launched in the background by entrypoint.sh unless CWW_BROWSER=off. Helpers
 # (Xvfb/x11vnc/websockify) are started once, unsupervised: they are stable, and
-# a dead helper means a broken stack the developer recreates. The browser
-# itself runs in a restart loop — closing the last window from noVNC should not end
-# browser automation for good.
+# a dead helper means a broken stack — recover it by killing what's left of the
+# old stack and rerunning this script. The browser itself runs in a restart
+# loop — closing the last window from noVNC should not end browser automation
+# for good. A pidfile guards against a concurrent second copy of the stack.
+
+# Refuse to double-start: a second launch against the same profile just opens
+# a tab in the running browser and exits, so a second copy of the restart loop
+# below becomes a tab-spawning loop. The /proc check ignores a stale pidfile
+# whose pid was recycled by an unrelated process.
+PIDFILE=/tmp/cww-browser.pid
+oldpid="$(cat "$PIDFILE" 2>/dev/null)"
+if [ -n "$oldpid" ] && kill -0 "$oldpid" 2>/dev/null \
+        && grep -q cww-browser "/proc/$oldpid/cmdline" 2>/dev/null; then
+    echo "[cww-browser] already running (pid $oldpid); refusing to start a second stack." >&2
+    echo "[cww-browser] to relaunch: kill $oldpid and any leftover Xvfb/x11vnc/websockify/browser processes, then run cww-browser again." >&2
+    exit 1
+fi
+echo $$ > "$PIDFILE"
 
 RES="${CWW_BROWSER_RESOLUTION:-1920x1080}"
 

@@ -1,6 +1,6 @@
 ---
 name: cww
-description: How this cww workspace works and how to configure cww for this repo. Use when asked about the environment, its services, ports, or browser, about resetting or reseeding data, exposing the app, "this sandbox"/"this container", or anything involving the cww tool.
+description: How this cww workspace works and how to configure cww for this repo. Use when asked about the environment, its services, ports, or browser, about resetting or reseeding data, exposing the app, "this sandbox"/"this container", or anything involving the cww tool. Also load this immediately if the chrome-devtools MCP can't connect, Chrome "isn't running", or the browser/noVNC seems broken — do not launch your own browser before reading it.
 ---
 
 # Working inside a cww workspace
@@ -42,10 +42,34 @@ Commit and push work worth keeping.
   the chrome-devtools MCP server. It is the way to *see* the app: it reaches
   your dev server at `localhost:<port>` and services by hostname. The user
   can watch it — or take over, e.g. to type a login or 2FA code — through a
-  noVNC tab on their side, so it's fine to ask them to intervene there.
+  noVNC tab on their side, so it's fine to ask them to intervene there. If it
+  seems down, see "If the built-in browser is down" below.
 - **There is no docker socket in this container.** You cannot run `docker`,
   `docker compose`, or inspect sibling containers. To poke at a service, use
   its client protocol over the network (e.g. `psql -h postgres`).
+
+## If the built-in browser is down
+
+The browser stack — Xvfb, x11vnc, noVNC on container port 7900, and the
+headful browser with CDP on `127.0.0.1:9222` — is started at boot by
+`/usr/local/bin/cww-browser`, which logs to `/tmp/cww-browser.log` and writes
+its pid to `/tmp/cww-browser.pid`. If the chrome-devtools MCP can't connect:
+
+- **Never launch your own headless browser on port 9222.** It answers CDP but
+  renders nowhere — the user sees nothing in noVNC — and it squats the port
+  the real stack needs.
+- Read `/tmp/cww-browser.log`, then rerun `/usr/local/bin/cww-browser` in the
+  background. Its pidfile guard makes this safe: it refuses to start while
+  another copy is alive.
+- If it refuses but the stack is still broken, kill the surviving copy —
+  `kill $(cat /tmp/cww-browser.pid)`, plus any leftovers found with
+  `pgrep -af 'Xvfb|x11vnc|websockify|chrom'` — then rerun it.
+- Repeated `[cww-browser] Browser exited; restarting in 1s ...` log lines mean
+  the browser is crashing, not merely closed. One known cause is a full disk
+  (check `df -h /`), e.g. after a Docker disk-quota incident on the host:
+  freeing space lets the loop revive the browser, but the helpers
+  (Xvfb/x11vnc/websockify) are not supervised and never restart on their own —
+  hence the kill-and-rerun recovery above.
 
 ## Git rules
 
