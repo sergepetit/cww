@@ -250,6 +250,8 @@ cww shell feature-auth    # By workspace name
 cww shell                 # From the repo directory (single workspace)
 ```
 
+**Already attached to the agent?** You don't need a separate terminal for `cww shell` — split a tmux pane instead (`Ctrl-a |` or `Ctrl-a -`) to get a shell right beside the agent, in the same container and at `/workspace`. See [tmux keys](#tmux-keys) for the pane bindings, and [Copying text with the mouse](#copying-text-with-the-mouse) for pulling command output into your system clipboard (on Mac Terminal.app, hold **Fn** while selecting).
+
 Every workspace command below accepts the same argless form: run from inside the project repo, it resolves the repo's workspace automatically — but only when the repo has **exactly one**. With several workspaces for the same repo the argless form refuses as ambiguous; pass the workspace name.
 
 ### `cww attach [workspace-name]`
@@ -260,6 +262,8 @@ Attach to the workspace's agent tmux session (Claude Code, Mistral Vibe, or Open
 cww attach feature-auth    # By workspace name
 cww attach                 # From the repo directory (single workspace)
 ```
+
+**Need a shell alongside the agent?** You don't have to leave the session — split a tmux pane (`Ctrl-a |` or `Ctrl-a -`) for a shell in the same container at `/workspace`, instead of a separate [`cww shell`](#cww-shell-workspace-name). See [tmux keys](#tmux-keys) for the pane bindings, and [Copying text with the mouse](#copying-text-with-the-mouse) for pulling output into your system clipboard (on Mac Terminal.app, hold **Fn** while selecting).
 
 ### `cww start [workspace-name]`
 
