@@ -100,6 +100,16 @@ export function declaredCacheDirs(servicesYaml: string, home: string): string[] 
   return [...new Set(matches)].sort().map((src) => src.replace(/^\$\{HOME\}|^\$HOME/, home));
 }
 
+// Whether a services file declares a `build:` key. cww copies the file into
+// the task dir and runs compose there, so a relative build context resolves
+// against the task dir — and the repo is only cloned inside the workspace
+// container, never present on the host task dir, so no context path can work.
+// Detected up front so create fails with a clear message instead of docker's
+// "unable to prepare context" mid-bring-up.
+export function servicesDeclareBuild(servicesYaml: string): boolean {
+  return /^[ \t]+build[ \t]*:/m.test(servicesYaml);
+}
+
 // Fill {{PLACEHOLDER}}s. Unknown placeholders are left as-is, like sed did.
 export function renderTemplate(template: string, vars: Record<string, string>): string {
   let out = template;
@@ -227,6 +237,27 @@ async function composeUp(taskDir: string): Promise<void> {
 // step. Only touches dirs that don't exist yet — already-provisioned caches
 // (and their ownership) are left untouched, keeping this cheap on every
 // create.
+// Reject a services file that declares `build:` (see servicesDeclareBuild)
+// before anything is copied or brought up.
+function assertServicesImageBased(projectServices: string): void {
+  let yaml: string;
+  try {
+    yaml = fs.readFileSync(projectServices, "utf8");
+  } catch {
+    return;
+  }
+  if (servicesDeclareBuild(yaml)) {
+    die(
+      `${projectServices} declares a 'build:' key, which cww does not support: ` +
+        `the services file is copied into the task dir and composed there, so a build ` +
+        `context cannot resolve (the repo is only cloned inside the workspace container, ` +
+        `never onto the host task dir). Use 'image:'-based services for stable ` +
+        `infrastructure, and run code under active development inside the workspace ` +
+        `instead (e.g. 'bun run dev').`,
+    );
+  }
+}
+
 async function provisionDeclaredCaches(servicesFile: string): Promise<void> {
   let yaml: string;
   try {
@@ -652,6 +683,7 @@ export async function runCreate(argv: string[]): Promise<void> {
     // saved copy: it may predate a config fix made after a failed create, and
     // the project file may have been removed since.
     if (fs.existsSync(projectServices)) {
+      assertServicesImageBased(projectServices);
       fs.copyFileSync(projectServices, taskServices);
       await provisionDeclaredCaches(taskServices);
     } else {
@@ -683,6 +715,7 @@ export async function runCreate(argv: string[]): Promise<void> {
   // Project-specific services ride along into the task dir.
   if (fs.existsSync(projectServices)) {
     info("Found project-specific services configuration");
+    assertServicesImageBased(projectServices);
     fs.copyFileSync(projectServices, taskServices);
     // Ensure any declared ~/.cww/cache mount exists and is container-writable.
     await provisionDeclaredCaches(taskServices);

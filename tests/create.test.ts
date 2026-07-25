@@ -7,6 +7,7 @@ import {
   declaredCacheDirs,
   generateAgentEnvOverride,
   renderTemplate,
+  servicesDeclareBuild,
 } from "../src/commands/create";
 import { parseHostsEntries } from "../src/lib/hosts";
 import { containerHostname } from "../src/lib/naming";
@@ -98,6 +99,48 @@ services:
 
   test("empty yaml yields nothing", () => {
     expect(declaredCacheDirs("", "/home/dev")).toEqual([]);
+  });
+});
+
+describe("servicesDeclareBuild", () => {
+  test("detects a build: key, block or inline form", () => {
+    const block = `
+services:
+  api:
+    build:
+      context: ../api
+`;
+    const inline = `
+services:
+  api:
+    build: ../api
+`;
+    expect(servicesDeclareBuild(block)).toBe(true);
+    expect(servicesDeclareBuild(inline)).toBe(true);
+  });
+
+  test("image-based services pass", () => {
+    const yaml = `
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: todo_dev
+`;
+    expect(servicesDeclareBuild(yaml)).toBe(false);
+    expect(servicesDeclareBuild("")).toBe(false);
+  });
+
+  test("comments and build-prefixed words don't trigger", () => {
+    const yaml = `
+services:
+  ci:
+    # build: happens elsewhere; this service only runs prebuilt images
+    image: builder:1
+    environment:
+      builder_mode: fast
+`;
+    expect(servicesDeclareBuild(yaml)).toBe(false);
   });
 });
 
