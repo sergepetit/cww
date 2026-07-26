@@ -28,9 +28,13 @@ COPY config.json /home/developer/.copilot/config.json
 RUN chown -R developer:developer /home/developer/.copilot
 
 # The image is the source of truth for the CLI version ('cww build copilot'
-# rebuilds it); a container self-updating on start would drift from it. Same
-# reason as claude's DISABLE_AUTOUPDATER and opencode's
-# OPENCODE_DISABLE_AUTOUPDATE.
+# rebuilds it); a container self-updating on start would drift from it. Every
+# agent image suppresses updates, though for varying reasons: claude's
+# DISABLE_AUTOUPDATER and opencode's OPENCODE_DISABLE_AUTOUPDATE are belt and
+# braces over a second mechanism, vibe's VIBE_ENABLE_UPDATE_CHECKS is the only
+# thing keeping a failed update from killing the pane, and this one is copilot's
+# sole brake — its config.json has no autoUpdate key and the updater's state dir
+# survives a compose restart.
 ENV COPILOT_AUTO_UPDATE=false
 
 # This agent's half of the entrypoint's browser wiring (see

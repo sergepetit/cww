@@ -24,6 +24,14 @@ description: Master index of the project's authored documentation
 - [cp-plan.md](cp-plan.md) — A cww cp command that copies files between the host and a running workspace, scp-style (ws:path), resolving the container name and handing pushed files to the in-container developer user *(implemented (unit-tested; host Docker pass 2026-07-16))*
 - [copilot-agent-plan.md](copilot-agent-plan.md) — Add GitHub Copilot CLI as a fourth agent, including its BYOK mode so a workspace can run against a third-party OpenAI-compatible endpoint (e.g. a LAN llama.cpp server) *(done — all four phases host-verified 2026-07-21, including BYOK against the real llama.cpp/Qwen host)*
 
+## Backlog
+
+- [backlog.md](backlog.md) — Running list of known gaps and improvements deferred for later, with the evidence that motivated each
+
+## Research
+
+- [typescript-lsp-upstream.md](typescript-lsp-upstream.md) — The three ways an OpenCode workspace ends up with no TypeScript intelligence — root resolution, the fresh-workspace race, TypeScript 7 — with the measured evidence for each, and why cww deliberately ships no workaround
+
 ## Meta
 
 - [DOC_CONVENTIONS.md](DOC_CONVENTIONS.md) — Frontmatter schema and the controlled type vocabulary for this repo's Markdown docs, and our take on OKF for project documentation

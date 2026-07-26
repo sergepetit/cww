@@ -11,8 +11,23 @@ USER root
 
 # Install the OpenCode CLI + the Chrome DevTools MCP server (same pin as the
 # other agent images; it attaches to the cww browser stack over CDP — see the
-# mcp entry in opencode.json).
-RUN npm install -g opencode-ai chrome-devtools-mcp@1.5.0
+# mcp entry in opencode.json) + typescript-language-server for OpenCode's
+# native LSP support ("lsp": true in opencode.json).
+#
+# Note what the baked typescript-language-server is and is NOT for (verified
+# against 1.18.4 — see docs/typescript-lsp-upstream.md). The built-in
+# "typescript" server does NOT look on PATH: its which() call is OpenCode's
+# package *fetcher*, so it downloads its own copy into
+# ~/.cache/opencode/packages on first use and ignores this one. (Contrast vue
+# and pyright, which do try PATH first and honour disableLspDownload.) The
+# baked copy is what a repo-committed opencode.json spawns when it supplies a
+# "command" verbatim — the only path to TypeScript intelligence in a workspace
+# that cannot reach the npm registry.
+#
+# No global 'typescript' though (unlike the claude image): OpenCode resolves
+# tsserver.js from the WORKSPACE ROOT's node_modules and won't spawn the server
+# without it, so a global copy would never be used.
+RUN npm install -g opencode-ai chrome-devtools-mcp@1.5.0 typescript-language-server
 
 # Disable the auto-updater — a disposable container never self-updates.
 # Belt and braces: this env var plus "autoupdate": false in opencode.json.
@@ -23,8 +38,10 @@ ENV OPENCODE_DISABLE_AUTOUPDATE=true
 # (auth arrives at runtime via a provider API key in the env_file).
 #
 # opencode.json -> ~/.config/opencode/opencode.json: auto-update off, session
-# sharing disabled, and the chrome-devtools MCP entry pointing at the cww
-# browser stack's CDP port; browser-hook.sh strips it when CWW_BROWSER=off.
+# sharing disabled, LSP on (built-in servers — every one of them, TypeScript
+# included, fetches its language server into ~/.cache/opencode/packages on
+# first use), and the chrome-devtools MCP entry pointing at the cww browser
+# stack's CDP port; browser-hook.sh strips it when CWW_BROWSER=off.
 # A repo-committed opencode.json merges OVER this global config (unlike Vibe's
 # replace-only config.toml), so project config can't hide the MCP entry.
 #

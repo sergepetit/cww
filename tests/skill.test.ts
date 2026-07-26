@@ -1,15 +1,21 @@
 // Content checks for the built-in workspace skill (templates/skills/cww):
 // valid frontmatter with a name matching its directory, and no dangling
 // references — every references/<doc> the skill mentions must be a doc the
-// registry actually bundles (BUILTIN_SKILL_REFERENCES, pulled from docs/).
+// registry actually bundles, whether that is one of BUILTIN_SKILL_REFERENCES
+// (pulled from docs/) or the per-agent troubleshooting note.
 
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
-import { BUILTIN_SKILL_REFERENCES, getCwwDir } from "../src/agents/registry";
+import { BUILTIN_SKILL_REFERENCES, CWW_AGENTS, getCwwDir } from "../src/agents/registry";
 
 const SKILL_DIR = path.join(getCwwDir(), "templates", "skills", "cww");
 const SKILL_MD = fs.readFileSync(path.join(SKILL_DIR, "SKILL.md"), "utf8");
+const TROUBLESHOOTING_DIR = path.join(getCwwDir(), "templates", "agent-troubleshooting");
+
+// References staged per-agent rather than pulled from docs/, so they are
+// legitimately absent from BUILTIN_SKILL_REFERENCES.
+const AGENT_STAGED_REFERENCES = ["troubleshooting.md"];
 
 // The frontmatter block and its top-level "key: value" lines.
 function frontmatter(text: string): Record<string, string> {
@@ -40,7 +46,21 @@ describe("built-in workspace skill", () => {
     const mentioned = new Set(
       [...SKILL_MD.matchAll(/references\/([\w-]+\.md)/g)].map((m) => m[1]!),
     );
-    expect([...mentioned].sort()).toEqual([...BUILTIN_SKILL_REFERENCES].sort());
+    expect([...mentioned].sort()).toEqual(
+      [...BUILTIN_SKILL_REFERENCES, ...AGENT_STAGED_REFERENCES].sort(),
+    );
+  });
+
+  test("troubleshooting notes are named for real agents, so they actually ship", () => {
+    const docs = fs.existsSync(TROUBLESHOOTING_DIR)
+      ? fs.readdirSync(TROUBLESHOOTING_DIR).filter((f) => f.endsWith(".md"))
+      : [];
+    // At least one, or the skill's troubleshooting section points at nothing.
+    expect(docs.length).toBeGreaterThan(0);
+    // A file named for a non-agent would be silently skipped at create.
+    for (const doc of docs) {
+      expect(CWW_AGENTS as readonly string[]).toContain(path.basename(doc, ".md"));
+    }
   });
 
   test("every bundled reference doc exists in docs/", () => {

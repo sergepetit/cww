@@ -415,7 +415,7 @@ Deliberately *not* included: compilers (`build-essential`) and build tools like 
 
 > **Note:** Google ships the Chrome `.deb` for amd64 only; arm64 hosts (e.g. Apple Silicon Macs building natively) get Chromium from the xtradeb PPA instead — same headful stack, same CDP port. The PPA is apt-pinned so only `chromium*` packages can come from it.
 
-The agent images add Claude Code (npm, plus [TypeScript code intelligence](#typescript-code-intelligence-lsp)), Mistral Vibe (pipx), OpenCode (npm), or the GitHub Copilot CLI (npm) respectively. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`. For **one project** only, ship a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) in the repo — cww layers it on top of the agent image at create.
+The agent images add Claude Code (npm, plus [TypeScript code intelligence](#typescript-code-intelligence-lsp)), Mistral Vibe (pipx), OpenCode (npm, plus [TypeScript code intelligence](#typescript-code-intelligence-lsp)), or the GitHub Copilot CLI (npm) respectively. To add languages or tools for all agents, edit `docker/base/Dockerfile` and rebuild with [`cww build`](#cww-build-agentall); for one agent only, edit that agent's `src/agents/<name>/Dockerfile`. For **one project** only, ship a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) in the repo — cww layers it on top of the agent image at create.
 
 ## tmux keys
 
@@ -523,12 +523,39 @@ Notes:
 
 ## TypeScript code intelligence (LSP)
 
-Claude workspaces ship with Claude Code's LSP tool active for TypeScript/JavaScript out of the box: the official `typescript-lsp` plugin and the `typescript-language-server` binary are baked into the claude image, so the agent gets go-to-definition, find-references, and type diagnostics (injected automatically after each edit) in any repo with a `tsconfig.json`/`package.json` — no setup, no first-run download. In non-TS repos the plugin sits idle. Vibe, OpenCode, and Copilot workspaces are unaffected (the plugin mechanism is Claude Code-specific); other languages remain a `.cww/Dockerfile` install away.
+Claude workspaces ship with Claude Code's LSP tool active for TypeScript/JavaScript out of the box: the official `typescript-lsp` plugin and the `typescript-language-server` binary are baked into the claude image, so the agent gets go-to-definition, find-references, and type diagnostics (injected automatically after each edit) in any repo with a `tsconfig.json`/`package.json` — no setup, no first-run download. In non-TS repos the plugin sits idle.
+
+OpenCode workspaces get TypeScript intelligence through OpenCode's **native LSP** (no plugin mechanism involved): the baked global config enables it with `"lsp": true`. Unlike Claude, OpenCode fetches its own language servers — every built-in, TypeScript included, downloads into `~/.cache/opencode/packages` the first time it's needed, and the built-in TypeScript entry never looks on `PATH`. So the first TypeScript session in a workspace needs the npm registry reachable; with the registry blocked and package caches cold there is no code intelligence and no error message. A repo can opt out with `"lsp": false` (or per-server `"disabled"` flags) in its committed `opencode.json`.
+
+Vibe and Copilot workspaces are unaffected; for them, TypeScript — like other languages for any agent — remains a `.cww/Dockerfile` install away.
+
+### OpenCode — what has to be true
+
+Three conditions. All of them fail the same silent way: the sidebar simply keeps reporting that LSPs activate as files are read, which is indistinguishable from "this isn't a TypeScript project."
+
+1. **`typescript` resolves from the workspace root** — in practice `/workspace/node_modules/typescript/lib/tsserver.js` must exist. OpenCode resolves the compiler relative to the *project directory*, not to the file being edited, so a monorepo whose package lives in `packages/app` with nothing hoisted to the root gets no intelligence at all, on an otherwise supported project ([opencode#18694](https://github.com/anomalyco/opencode/issues/18694), [#16335](https://github.com/anomalyco/opencode/issues/16335), both open). Lockfiles make no difference. Fixes, in order of preference: install so `typescript` lands at the root (npm and bun hoist it there by default; pnpm's isolated layout does not); or launch the agent from the package directory — `cd packages/app && opencode`, a manual step, since `cww create` always starts the agent at the repo root; or commit the override below.
+2. **That `typescript` is 6.x or older.** The server boots `typescript/lib/tsserver.js`. TypeScript 7 — the Go rewrite, and what a bare `npm install typescript` now installs — ships no such file, because its language server is native and speaks LSP directly. There is nothing to attach to at any point in the session. Pin `typescript` at `^6` (the maintained JS-based line) until OpenCode ships native support.
+3. **It is already there when the server first attaches.** A failed attach is not retried, and a new workspace is a cold clone whose agent launches before anything is installed — so the **first session in any new workspace has no code intelligence**, and running `npm install`/`bun install` afterwards does not revive it. Exit and relaunch the agent. This is OpenCode's own session lifecycle, not something cww does; cww's create flow just guarantees you meet it every time. **Claude workspaces are unaffected** — tested on the same cold clone with dependencies installed mid-session, Claude still reported the type error, because its plugin resolves the language server when diagnostics are needed rather than once at startup.
+
+Where condition 1 can't be met by hoisting, a repo can point the server at an explicit compiler. Note this bypasses the built-in entirely, so **retire it once upstream fixes the resolution** — otherwise it shadows the corrected built-in:
+
+```json
+{ "lsp": {
+    "typescript": { "disabled": true },
+    "typescript-pinned": {
+      "command": ["typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
+      "initialization": { "tsserver": { "path": "/workspace/packages/app/node_modules/typescript/lib/tsserver.js" } }
+    } } }
+```
+
+Disabling the built-in matters — leave it enabled and two servers attach to the same files. `command` is mandatory (an entry with only `initialization` is invalid), the root is not configurable, and this is the one path that uses the image's baked `typescript-language-server`, so it also works with no registry access.
 
 Notes:
 
-- **Monorepos:** if workspace-root detection picks the wrong folder, the server can report false-positive errors. Committing a Claude Code LSP `workspaceFolder` override in the repo's own `.claude/` config fixes it.
-- **Token cost:** the after-edit diagnostics add context on every edit. If that's too chatty in a large project, the repo can disable it with `"diagnostics": false` in its own Claude Code LSP settings — see the [plugins reference](https://code.claude.com/docs/en/plugins-reference).
+- **TypeScript 6 stopped auto-including `@types`.** The `types` compiler option now defaults to `[]`; earlier versions implicitly pulled in everything under `node_modules/@types`. A project moving to TS 6 without listing them gets a wave of errors for globals it never had trouble with — `process`, `Buffer`, `describe` — and your agent reports them as genuine diagnostics, because they are. Fix it in the repo's own `tsconfig.json` by listing what the project actually needs — `"types": ["node"]`, plus any others such as `"jest"`. `"types": ["*"]` restores the old behaviour, but TypeScript discourages it, citing 20–50% build-time gains from explicit lists. Not a cww behaviour — a workspace is just where you meet it.
+- **Monorepos (Claude):** if workspace-root detection picks the wrong folder, the server can report false-positive errors. Committing a Claude Code LSP `workspaceFolder` override in the repo's own `.claude/` config fixes it.
+- **Token cost (Claude):** the after-edit diagnostics add context on every edit. If that's too chatty in a large project, the repo can disable it with `"diagnostics": false` in its own Claude Code LSP settings — see the [plugins reference](https://code.claude.com/docs/en/plugins-reference).
 
 ## Accessing the app in a browser
 

@@ -204,3 +204,34 @@ already lets a user neutralize it with an empty skill.)
 - **Naming.** `cww` as the skill name is short and collision-safe enough
   under the override rule; `cww-workspace` is the fallback if a flat `cww`
   proves confusing next to user skills.
+
+## Why the troubleshooting reference's wording is deliberate
+
+Getting `references/troubleshooting.md` *read*, and read correctly, took three
+separate fixes — validated over six live runs on 2026-07-22 (OpenCode 1.18.4,
+local Qwen3.6-35B). Recorded here because it is not recoverable from the file
+itself, and a later tidy-up would reintroduce both defects.
+
+| Lever | Governs | Result |
+|---|---|---|
+| skill `description` | does the skill load at all | works on an LSP question; does **not** fire on a bare install |
+| SKILL.md triggers | does the reference get read | works — an *action* trigger is followed where a *symptom* trigger was not |
+| reference content | is the conclusion right | works, after a rewrite |
+
+Two wording defects were found by testing, not by review:
+
+- A symptom trigger ("read this when your tooling misbehaves") is never followed
+  at the moment that matters, because nothing looks broken — the install
+  succeeds and the app runs. Keep the trigger tied to an **action** the agent
+  takes ("after any dependency install"), not to a symptom it would have to
+  notice.
+- An exemption clause ("does not apply if `typescript` was already resolvable
+  when you started") got evaluated in the present tense, so the agent concluded
+  code intelligence was fine when it was dead. Keep the file's remedy gated on a
+  **runnable check** whose output is unambiguous, never on a condition about
+  past state. (The check itself was corrected again on 2026-07-26, once the
+  failure turned out to be root-resolvability rather than install timing — so
+  the exemption is now "if this command prints a path, say nothing".)
+
+Worth re-testing whenever the skill's `description` changes, since that is the
+lever the whole chain hangs off.

@@ -168,10 +168,23 @@ export const BUILTIN_SKILL_REFERENCES = [
   "git-strategy.md",
 ] as const;
 
+// Agent-specific troubleshooting notes, staged as the skill's
+// references/troubleshooting.md. Unlike BUILTIN_SKILL_REFERENCES — host-facing
+// user docs the agent relays — these are written FOR the running agent, about
+// its own quirks in here, so only its own file ships. Resolved on the host,
+// where the agent is already known, rather than making the agent pick by
+// CWW_IMAGE_AGENT: no wrong-file risk, and a workspace carries no other
+// agent's notes. Null for agents with nothing known to warn about.
+export function troubleshootingDoc(agent: Agent): string | null {
+  const doc = path.join(getCwwDir(), "templates", "agent-troubleshooting", `${agent}.md`);
+  return fs.existsSync(doc) ? doc : null;
+}
+
 export interface BuiltinSkillPlan {
   src: string; // the skill folder in the install (templates/skills/cww)
   references: string[]; // absolute paths of the reference docs that exist
   missingReferences: string[]; // basenames absent from the install's docs/
+  troubleshooting: string | null; // this agent's troubleshooting doc, if any
   dest: string; // where the skill lands in the container
 }
 
@@ -197,6 +210,7 @@ export function builtinSkillPlan(
     src: path.join(getCwwDir(), "templates", "skills", "cww"),
     references,
     missingReferences,
+    troubleshooting: troubleshootingDoc(agent),
     dest: path.join(skillsDir, "cww"),
   };
 }
@@ -221,6 +235,9 @@ async function materializeBuiltinSkill(container: string, agent: Agent): Promise
     fs.mkdirSync(refDir, { recursive: true });
     for (const doc of plan.references) {
       fs.copyFileSync(doc, path.join(refDir, path.basename(doc)));
+    }
+    if (plan.troubleshooting) {
+      fs.copyFileSync(plan.troubleshooting, path.join(refDir, "troubleshooting.md"));
     }
     if (await copyDirIntoContainer(stage, container, plan.dest)) {
       info(`Loaded the built-in cww skill (${plan.dest.replace("/home/developer", "~")})`);

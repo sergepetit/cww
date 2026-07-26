@@ -253,6 +253,17 @@ describe("builtinSkillPlan", () => {
     }
   });
 
+  test("each agent gets only its own troubleshooting doc, or none", () => {
+    for (const agent of CWW_AGENTS) {
+      const plan = builtinSkillPlan(agent, {})!;
+      const expected = path.join(getCwwDir(), "templates", "agent-troubleshooting", `${agent}.md`);
+      // Present or absent, it is never another agent's file.
+      expect(plan.troubleshooting).toBe(fs.existsSync(expected) ? expected : null);
+    }
+    // opencode's notes exist today (the LSP session-lifecycle warnings).
+    expect(builtinSkillPlan("opencode", {})!.troubleshooting).not.toBeNull();
+  });
+
   test("CWW_SKILL=off (and friends) opt out", () => {
     for (const value of ["off", "0", "false", "no"]) {
       expect(builtinSkillPlan("claude", { CWW_SKILL: value })).toBeNull();

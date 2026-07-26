@@ -33,6 +33,18 @@ RUN chmod 755 /usr/local/share/cww/browser-hook.sh
 USER developer
 RUN pipx install mistral-vibe
 
+# Suppress the update check — same intent as claude's DISABLE_AUTOUPDATER and
+# opencode's OPENCODE_DISABLE_AUTOUPDATE, but here it is load-bearing rather
+# than belt-and-braces. Checks default on (enable_update_checks in vibe's
+# settings), and the prompt is a launch gate: accepting runs 'uv tool upgrade'
+# then 'brew upgrade' as a fallback, and this image has NEITHER (vibe arrives
+# via pipx), so the update fails and vibe exits 1 — which kills the tmux pane
+# instead of landing the user at a prompt. Even a *successful* update exits 0
+# and asks to be relaunched. Env beats vibe's TOML config source, so this also
+# holds when a repo commits its own .vibe/config.toml (which otherwise replaces
+# the user config wholesale — see browser-hook.sh).
+ENV VIBE_ENABLE_UPDATE_CHECKS=false
+
 # tmux launches CWW_AGENT_CMD via 'sh -c' (not a login shell), so pipx's bin
 # dir must be on PATH explicitly.
 ENV PATH="/home/developer/.local/bin:${PATH}"

@@ -1,6 +1,6 @@
 ---
 name: cww
-description: How this cww workspace works and how to configure cww for this repo. Use when asked about the environment, its services, ports, or browser, about resetting or reseeding data, exposing the app, "this sandbox"/"this container", or anything involving the cww tool. Also load this immediately if the chrome-devtools MCP can't connect, Chrome "isn't running", or the browser/noVNC seems broken — do not launch your own browser before reading it.
+description: How this cww workspace works and how to configure cww for this repo. Use when asked about the environment, its services, ports, or browser, about resetting or reseeding data, exposing the app, "this sandbox"/"this container", or anything involving the cww tool. Also load this immediately if the chrome-devtools MCP can't connect, Chrome "isn't running", or the browser/noVNC seems broken — do not launch your own browser before reading it. Load it too whenever code intelligence looks wrong — "why is the LSP not activated", no type diagnostics, go-to-definition doing nothing — and right after the first dependency install in this workspace, which is when that silently breaks.
 ---
 
 # Working inside a cww workspace
@@ -154,6 +154,27 @@ a file you edit here does nothing until it completes this loop:
 
 Spell this loop out every time you change `.cww/` files, or they will
 silently do nothing.
+
+## Your own quirks: `references/troubleshooting.md`
+
+If that file is present, it holds known rough edges of **the agent you are**
+running as, inside a cww workspace — staged for your agent specifically, so it
+never describes a different CLI. It is the one bundled file written *for you*
+rather than for the user: its steps happen here, not on their machine.
+
+Read it at two moments:
+
+- **Right after the first dependency install in this workspace** — before you
+  carry on. `/workspace` is a cold clone, so that first `npm`/`bun`/`pip`
+  install is the one that changes what your own tooling can see, and some of
+  what changes does not take effect until you are restarted.
+- **When your own tooling misbehaves** — code intelligence gone quiet,
+  diagnostics that stopped arriving, a capability that seems switched off.
+
+The first trigger matters most, because it fires while everything still *looks*
+fine: several of the quirks in there fail **silently**, so "nothing looks
+wrong" is not evidence that nothing is. The file is absent when there is
+nothing known to warn you about.
 
 ## References
 

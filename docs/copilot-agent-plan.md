@@ -58,7 +58,8 @@ any built copilot image without a credential.
   and therefore a secret — it is not forwarded.
 - `COPILOT_AUTO_UPDATE=false` disables the CLI's self-update, which is on by
   default outside CI. cww sets it in the image, matching claude's
-  `DISABLE_AUTOUPDATER` and opencode's `OPENCODE_DISABLE_AUTOUPDATE`.
+  `DISABLE_AUTOUPDATER`, opencode's `OPENCODE_DISABLE_AUTOUPDATE` and vibe's
+  `VIBE_ENABLE_UPDATE_CHECKS`.
 - Config dir `~/.copilot/`: `mcp-config.json`
   (`{"mcpServers": {"<name>": {"type": "local", "command": ..., "args": [...], "tools": ["*"]}}}`),
   `config.json`, `settings.json`, `skills/` (open Agent Skills format),
