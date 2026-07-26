@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   agentAuthEnvKeys,
   agentAuthMethods,
+  AGENT_VERSION_FILE,
   agentBuildPlan,
   agentContainerEnv,
   agentImage,
@@ -15,6 +16,7 @@ import {
   CWW_AGENTS,
   findAuthMethod,
   getCwwDir,
+  parseAgentVersion,
   personalAssetPlan,
   resolveAgent,
   validateAgent,
@@ -390,12 +392,57 @@ describe("opencode config file", () => {
   });
 });
 
+describe("parseAgentVersion", () => {
+  // The real --version output of each image, captured 2026-07-26.
+  test("reduces every agent's --version spelling to the bare version", () => {
+    expect(parseAgentVersion("2.1.216 (Claude Code)")).toBe("2.1.216");
+    expect(parseAgentVersion("vibe 2.22.0")).toBe("2.22.0");
+    expect(parseAgentVersion("1.18.4")).toBe("1.18.4");
+    // Trailing period, plus copilot's second line nagging about updates.
+    expect(parseAgentVersion("GitHub Copilot CLI 1.0.73.\nRun 'copilot update' to check\n")).toBe(
+      "1.0.73",
+    );
+  });
+
+  test("keeps prerelease and build suffixes", () => {
+    expect(parseAgentVersion("3.0.0-beta.2")).toBe("3.0.0-beta.2");
+    expect(parseAgentVersion("cli 1.2.3+build7 (x64)")).toBe("1.2.3+build7");
+  });
+
+  test("falls back to the first line when nothing looks like a version", () => {
+    expect(parseAgentVersion("  unreleased build \n more\n")).toBe("unreleased build");
+    expect(parseAgentVersion("")).toBe("");
+  });
+});
+
 describe("agentBuildPlan", () => {
   test("builds the shared base first, then the agent's own folder", () => {
     expect(agentBuildPlan("vibe")).toEqual([
-      { tag: "cww-base:latest", context: path.join("docker", "base") },
-      { tag: "coder-workspace-workflow:vibe", context: path.join("src", "agents", "vibe") },
+      { tag: "cww-base:latest", context: path.join("docker", "base"), flags: ["--pull"] },
+      {
+        tag: "coder-workspace-workflow:vibe",
+        context: path.join("src", "agents", "vibe"),
+        flags: ["--no-cache"],
+      },
     ]);
+  });
+
+  // The default is fresh: an unpinned CLI that a cache hit freezes forever is
+  // the whole reason 'cww build' exists (docs/backlog.md). Only the agent step
+  // is busted — a --no-cache base would redo apt/node/bun/Temurin every time.
+  test("fresh by default: --pull the base, --no-cache the agent's CLI layer", () => {
+    for (const agent of CWW_AGENTS) {
+      const [base, own] = agentBuildPlan(agent);
+      expect(base!.flags).toEqual(["--pull"]);
+      expect(base!.flags).not.toContain("--no-cache");
+      expect(own!.flags).toEqual(["--no-cache"]);
+    }
+  });
+
+  test("--cached passes no cache flags at all", () => {
+    for (const step of agentBuildPlan("claude", { cached: true })) {
+      expect(step.flags).toEqual([]);
+    }
   });
 
   test("every step's build context exists and carries a Dockerfile", () => {
@@ -403,6 +450,19 @@ describe("agentBuildPlan", () => {
       for (const step of agentBuildPlan(agent)) {
         expect(fs.existsSync(path.join(getCwwDir(), step.context, "Dockerfile"))).toBe(true);
       }
+    }
+  });
+
+  // The host reads this path; only the Dockerfiles write it. A new agent that
+  // skips the stamp reports '?' forever, which is exactly the kind of silent
+  // gap this catches.
+  test("every agent image stamps its CLI version at the path the host reads", () => {
+    for (const agent of CWW_AGENTS) {
+      const dockerfile = fs.readFileSync(
+        path.join(getCwwDir(), "src", "agents", agent, "Dockerfile"),
+        "utf8",
+      );
+      expect(dockerfile).toContain(`> ${AGENT_VERSION_FILE}`);
     }
   });
 });

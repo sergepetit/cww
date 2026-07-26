@@ -2,12 +2,15 @@
 type: plan
 title: OpenCode Config File Plan
 description: Replace the one-line OPENCODE_CONFIG_CONTENT env-var UX with real JSON files (~/.cww/opencode.json, <repo>/.cww/opencode.json) that cww validates and injects at create
-status: implemented (unit-tested; host Docker checklist passed 2026-07-12)
+status: done
 created: 2026-07-11
+timestamp: 2026-07-12
 tags: [agents, opencode, config, ux]
 ---
 
 # OpenCode Config File Plan
+
+**Done 2026-07-12**: unit-tested, with the host Docker checklist passed.
 
 ## Context
 

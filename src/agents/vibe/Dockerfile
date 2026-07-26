@@ -49,6 +49,17 @@ ENV VIBE_ENABLE_UPDATE_CHECKS=false
 # dir must be on PATH explicitly.
 ENV PATH="/home/developer/.local/bin:${PATH}"
 
+# Stamp the installed CLI version into the image. It is nowhere in image
+# metadata, so this file is what lets 'cww list --versions' report what a
+# workspace runs without launching the agent. Unlike the npm-based images this
+# has to come after the developer-stage pipx install (and after the PATH above,
+# which is what makes 'vibe' resolvable); root only to write under
+# /usr/local/share. First line only; a failure leaves the file empty rather
+# than breaking the build, and the host degrades to '?'.
+USER root
+RUN vibe --version 2>/dev/null | head -1 > /usr/local/share/cww/agent-version
+USER developer
+
 # Auth is supplied at runtime via MISTRAL_API_KEY in the env_file (or a
 # repo-committed .vibe/config.toml for custom providers). --yolo auto-approves
 # tool use (the container is sandboxed, same rationale as claude's

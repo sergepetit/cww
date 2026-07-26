@@ -83,10 +83,10 @@ cww teardown sandbox         # remove the container, services, and metadata
 | `cww cp <src>... <dest>` | Copy files between the host and a workspace, scp-style (`ws:path`); pushed files land owned by `developer` |
 | `cww export-skill [name]` | Share a personal skill from your host agent config with the repo — recorded in `.cww/skills/` and pushed into running workspaces |
 | `cww teardown [name]` | Remove a workspace's containers, volumes, network, and metadata |
-| `cww list` | List all workspaces and their published ports |
+| `cww list` | List all workspaces, their published ports, and how current each one's image is (`--versions` for agent CLI versions) |
 | `cww tunnel-command [name]` | Print the `ssh -N -L …` command mapping a workspace's ports to stable `localhost` ports (from another machine or the host itself) |
 | `cww cache <preset\|name>` | Provision a shared dependency cache (npm, m2, …) that workspaces can mount |
-| `cww build [agent\|all]` | Build/rebuild a per-agent Docker image (`claude`, `vibe`, `opencode`, `copilot`) |
+| `cww build [agent\|all]` | Build/rebuild a per-agent Docker image (`claude`, `vibe`, `opencode`, `copilot`) with the current agent CLI; `--cached` keeps the installed version |
 
 **Optional per-project hooks** (in your repo's `.cww/`): a `reset.sh` that resets and reseeds service data (run on `create`, re-runnable via `cww reset`), a [`Dockerfile`](docs/user-guide.md#customizing-the-workspace-image-cwwdockerfile) layered on top of the agent image at create (bake in the project's system packages and SDKs), and personal-asset folders copied into the container at create: `skills/` (the portable [Agent Skills](https://agentskills.io) format) for whichever agent runs — into `~/.claude/skills`, `~/.vibe/skills`, `~/.config/opencode/skills`, or `~/.copilot/skills` — plus `commands/` and `agents/` for Claude Code only. Handy for personal skills (symlink your global set with `ln -s ~/.claude/skills .cww/skills`, or share one skill — including into already-running workspaces — with `cww export-skill <name>`). Team skills committed to the repo's own `.claude/skills/` (Claude Code, OpenCode, and Copilot), `.vibe/skills/` (Vibe), `.opencode/skills/` (OpenCode), or `.github/skills/` (Copilot) ride the clone automatically. Every workspace also gets a [built-in `cww` skill](docs/user-guide.md#the-built-in-workspace-skill) so the agent knows it's inside a cww workspace — which commands are host-side, how the environment is wired, and how to author these `.cww/` hooks (`CWW_SKILL=off` disables).
 

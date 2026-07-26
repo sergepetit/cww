@@ -2,7 +2,7 @@
 type: plan
 title: Per-Agent Env Scoping and Auth Selection
 description: Stop injecting all of ~/.cww/env into every workspace — each agent declares the keys it needs, and an explicit --auth method (persisted like the git setup flow) determines the single credential a workspace gets
-status: implemented
+status: done
 created: 2026-07-14
 timestamp: 2026-07-15
 tags: [configuration, security, env, credentials, agents]

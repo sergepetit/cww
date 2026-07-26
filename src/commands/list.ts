@@ -3,11 +3,19 @@
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { AGENT_VERSION_FILE, parseAgentVersion } from "../agents/registry";
 import {
-  containerExists,
-  containerRunning,
   formatPortsDisplay,
   getPortMap,
+  imageAgeHours,
+  imageIsStale,
+  inspectContainers,
+  inspectImages,
+  readContainerFile,
+  readImageFile,
+  STALE_IMAGE_DAYS,
+  type ContainerInfo,
+  type ImageInfo,
   type PortBinding,
 } from "../lib/docker";
 import { findAllSessions, readSessionFile } from "../lib/session";
@@ -17,10 +25,27 @@ const USAGE = `Usage: cww list [options]
 
 List all active Coder Workspace Workflow sessions.
 
+IMAGE is the age of the image each workspace runs (its agent CLI is frozen at
+build time); '*' marks a workspace whose image tag has been rebuilt since.
+
 Options:
+  --versions     Also read each workspace's agent CLI version (one docker call
+                 per running workspace, one per distinct stopped image)
   --json         Output as JSON
   -h, --help     Show this help message
 `;
+
+// An agent CLI is frozen into the image a workspace was created from, so two
+// separate facts decide whether it is current, and they have different
+// remedies: how old that image is (rebuild it), and whether its tag has since
+// been rebuilt without this container following (teardown + recreate).
+export interface WorkspaceImage {
+  ref: string; // .Config.Image — the tag the container was created from
+  id: string; // the image it actually runs
+  created: string | null; // that image's build time; null if it is gone
+  ageHours: number | null;
+  drifted: boolean;
+}
 
 export interface SessionRow {
   project: string;
@@ -31,21 +56,93 @@ export interface SessionRow {
   status: "running" | "stopped" | "no-container";
   ports: PortBinding[];
   portsDisplay: string;
+  image: WorkspaceImage | null; // null when the container is gone
+  // Only with --versions: the agent CLI stamped into the image. null when the
+  // stamp is missing (an image built before it existed); absent entirely when
+  // versions weren't asked for, or there is no container to read.
+  version?: string | null;
   taskDir: string;
   created: string;
 }
 
-async function collectSessions(): Promise<SessionRow[]> {
-  const rows: SessionRow[] = [];
-  for (const sessionFile of findAllSessions()) {
-    const taskDir = path.dirname(sessionFile);
-    const session = readSessionFile(sessionFile);
-    const container = session.container ?? "unknown";
+// Age is measured against the image the container actually runs, and drift
+// against its OWN .Config.Image — never the agent's canonical tag: a
+// per-project image (.cww/Dockerfile -> cww-project-<name>:<agent>) would
+// otherwise be compared to an image it was never built from.
+export function workspaceImage(
+  container: ContainerInfo | undefined,
+  images: Map<string, ImageInfo>,
+  now: number,
+): WorkspaceImage | null {
+  if (!container) return null;
+  const own = images.get(container.imageId);
+  const tag = container.imageRef ? images.get(container.imageRef) : undefined;
+  const created = own?.created ?? null;
+  return {
+    ref: container.imageRef,
+    id: container.imageId,
+    created,
+    ageHours: imageAgeHours(created, now),
+    drifted: !!tag && tag.id !== container.imageId,
+  };
+}
 
-    let status: SessionRow["status"];
-    if (await containerRunning(container)) status = "running";
-    else if (await containerExists(container)) status = "stopped";
-    else status = "no-container";
+// The agent CLI version, which unlike age and drift is NOT in image metadata:
+// it only exists as a file the image bakes at build time, so reading it costs
+// a docker call per workspace — hence --versions rather than the default
+// table. Running containers are read with an exec; the rest need a throwaway
+// container over the image, deduped, so N workspaces sharing an image cost one
+// spawn, not N. All of it runs concurrently.
+async function attachVersions(
+  rows: SessionRow[],
+  containers: Map<string, ContainerInfo>,
+): Promise<void> {
+  const byImage = new Map<string, Promise<string | null>>();
+  await Promise.all(
+    rows.map(async (row) => {
+      const info = containers.get(row.container);
+      if (!info) return; // no container: nothing to read from
+      let raw: string | null;
+      if (info.running) {
+        raw = await readContainerFile(row.container, AGENT_VERSION_FILE);
+      } else {
+        let pending = byImage.get(info.imageId);
+        if (!pending) {
+          pending = readImageFile(info.imageId, AGENT_VERSION_FILE);
+          byImage.set(info.imageId, pending);
+        }
+        raw = await pending;
+      }
+      row.version = raw ? parseAgentVersion(raw) : null;
+    }),
+  );
+}
+
+async function collectSessions(opts: { versions?: boolean } = {}): Promise<SessionRow[]> {
+  // One instant for the whole table, so ages are comparable across rows.
+  const now = Date.now();
+  const sessions = findAllSessions().map((file) => ({
+    taskDir: path.dirname(file),
+    session: readSessionFile(file),
+  }));
+
+  // Two batched docker calls for the whole table: state and image fields per
+  // container, then every distinct image reference they name. Nothing execs,
+  // so stopped workspaces report as fully as running ones.
+  const containers = await inspectContainers(sessions.map((s) => s.session.container ?? ""));
+  const images = await inspectImages(
+    [...containers.values()].flatMap((c) => [c.imageId, c.imageRef]),
+  );
+
+  const rows: SessionRow[] = [];
+  for (const { taskDir, session } of sessions) {
+    const container = session.container ?? "unknown";
+    const info = containers.get(container);
+    const status: SessionRow["status"] = !info
+      ? "no-container"
+      : info.running
+        ? "running"
+        : "stopped";
 
     // Published ports across the task's compose stack (empty unless running).
     const ports = await getPortMap(taskDir);
@@ -59,10 +156,13 @@ async function collectSessions(): Promise<SessionRow[]> {
       status,
       ports,
       portsDisplay: formatPortsDisplay(ports),
+      image: workspaceImage(info, images, now),
       taskDir,
       created: session.created ?? "unknown",
     });
   }
+
+  if (opts.versions) await attachVersions(rows, containers);
   return rows;
 }
 
@@ -76,58 +176,128 @@ const STATUS_COLOR: Record<SessionRow["status"], string> = {
   "no-container": RED,
 };
 
-function displayCells(row: SessionRow): string[] {
+const DRIFT_MARK = "*";
+
+export const DRIFT_LEGEND = `${DRIFT_MARK} image rebuilt since this workspace was created — 'cww teardown' + 'cww create' to pick it up.`;
+
+// 'cww build' re-resolves the agent CLI by default, so this is a remedy the
+// reader can act on as written (see src/agents/registry.ts, agentBuildPlan).
+export const STALE_LEGEND = `Images over ${STALE_IMAGE_DAYS}d: 'cww build <agent>' installs the current CLI, then teardown + create moves a workspace onto it.`;
+
+// The stamp is a build-time artifact, so images built before it existed simply
+// don't carry it — and no amount of asking the container will produce one.
+export const UNKNOWN_VERSION_LEGEND = `VERSION '?': this image predates the version stamp — it appears after the next 'cww build <agent>'.`;
+
+// Compact age of the image the workspace runs, marked when its tag has moved
+// on: "5h", "12d", "12d *". "?" is an image that no longer exists locally.
+export function formatImageCell(image: WorkspaceImage | null): string {
+  if (!image) return "-";
+  const age =
+    image.ageHours === null
+      ? "?"
+      : image.ageHours < 24
+        ? `${image.ageHours}h`
+        : `${Math.floor(image.ageHours / 24)}d`;
+  return image.drifted ? `${age} ${DRIFT_MARK}` : age;
+}
+
+function isOld(image: WorkspaceImage | null): boolean {
+  return !!image && imageIsStale(image.ageHours);
+}
+
+// Both facts are worth acting on, so both color the cell — the legends below
+// separate them, since the remedies differ.
+function isStale(image: WorkspaceImage | null): boolean {
+  return !!image && (image.drifted || isOld(image));
+}
+
+function shortenHome(dir: string): string {
   const home = os.homedir();
-  const taskDir =
-    row.taskDir === home || row.taskDir.startsWith(home + path.sep)
-      ? `~${row.taskDir.slice(home.length)}`
-      : row.taskDir;
+  return dir === home || dir.startsWith(home + path.sep) ? `~${dir.slice(home.length)}` : dir;
+}
+
+// Color belongs to the value, not the column: status always carries one, IMAGE
+// only when it is worth acting on.
+interface Column {
+  header: string;
+  cell: (row: SessionRow) => string;
+  color?: (row: SessionRow) => string | null;
+}
+
+// VERSION is conditional, so columns are described rather than indexed —
+// nothing downstream has to know which position anything landed in.
+function columnsFor(versions: boolean): Column[] {
   return [
-    row.workspace,
-    row.status === "no-container" ? "error" : row.status,
-    row.project,
-    row.agent,
-    row.portsDisplay || "-",
-    taskDir,
+    { header: "WORKSPACE", cell: (r) => r.workspace },
+    {
+      header: "STATUS",
+      cell: (r) => (r.status === "no-container" ? "error" : r.status),
+      color: (r) => STATUS_COLOR[r.status],
+    },
+    { header: "PROJECT", cell: (r) => r.project },
+    { header: "AGENT", cell: (r) => r.agent },
+    ...(versions ? [{ header: "VERSION", cell: formatVersionCell } as Column] : []),
+    {
+      header: "IMAGE",
+      cell: (r) => formatImageCell(r.image),
+      color: (r) => (isStale(r.image) ? YELLOW : null),
+    },
+    { header: "PORTS", cell: (r) => r.portsDisplay || "-" },
+    { header: "TASK DIR", cell: (r) => shortenHome(r.taskDir) },
   ];
+}
+
+// "-" when there was no container to read from, "?" when there was one but its
+// image predates the version stamp.
+export function formatVersionCell(row: SessionRow): string {
+  if (row.version === undefined) return "-";
+  return row.version ?? "?";
 }
 
 // Columns auto-size to their widest value — nothing is truncated; overly wide
 // output degrades to terminal line-wrap. Color is applied after padding so
 // ANSI codes never enter the width math.
-export function formatTable(rows: SessionRow[]): string[] {
-  const headers = ["WORKSPACE", "STATUS", "PROJECT", "AGENT", "PORTS", "TASK DIR"];
-  const table = rows.map(displayCells);
-  const widths = headers.map((h, i) =>
-    Math.max(h.length, ...table.map((cells) => cells[i]!.length)),
+export function formatTable(rows: SessionRow[], opts: { versions?: boolean } = {}): string[] {
+  const columns = columnsFor(!!opts.versions);
+  const table = rows.map((row) => columns.map((c) => c.cell(row)));
+  const widths = columns.map((c, i) =>
+    Math.max(c.header.length, ...table.map((cells) => cells[i]!.length)),
   );
 
   const lines = [
-    headers.map((h, i) => pad(h, widths[i]!)).join("  ").trimEnd(),
-    headers.map((h, i) => pad("-".repeat(h.length), widths[i]!)).join("  ").trimEnd(),
+    columns.map((c, i) => pad(c.header, widths[i]!)).join("  ").trimEnd(),
+    columns.map((c, i) => pad("-".repeat(c.header.length), widths[i]!)).join("  ").trimEnd(),
   ];
   table.forEach((cells, r) => {
     const line = cells
       .map((cell, i) => {
         const padded = pad(cell, widths[i]!);
-        return i === 1 ? `${STATUS_COLOR[rows[r]!.status]}${padded}${NC}` : padded;
+        const color = columns[i]!.color?.(rows[r]!) ?? null;
+        return color ? `${color}${padded}${NC}` : padded;
       })
       .join("  ");
     lines.push(line.trimEnd());
   });
+  const legends: string[] = [];
+  if (rows.some((row) => row.image?.drifted)) legends.push(DRIFT_LEGEND);
+  if (rows.some((row) => isOld(row.image))) legends.push(STALE_LEGEND);
+  if (opts.versions && rows.some((row) => row.version === null)) legends.push(UNKNOWN_VERSION_LEGEND);
+  if (legends.length > 0) lines.push("", ...legends);
   return lines;
 }
 
-function printTable(rows: SessionRow[]): void {
-  for (const line of formatTable(rows)) console.log(line);
+function printTable(rows: SessionRow[], opts: { versions?: boolean }): void {
+  for (const line of formatTable(rows, opts)) console.log(line);
 }
 
 export async function runList(argv: string[]): Promise<void> {
   let json = false;
+  let versions = false;
   try {
     const { values } = parseArgs({
       args: argv,
       options: {
+        versions: { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -138,11 +308,12 @@ export async function runList(argv: string[]): Promise<void> {
       return;
     }
     json = values.json;
+    versions = values.versions;
   } catch (e) {
     die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
   }
 
-  const rows = await collectSessions();
+  const rows = await collectSessions({ versions });
 
   if (json) {
     console.log(JSON.stringify(rows, null, 2));
@@ -156,5 +327,5 @@ export async function runList(argv: string[]): Promise<void> {
     return;
   }
 
-  printTable(rows);
+  printTable(rows, { versions });
 }

@@ -73,10 +73,11 @@ _cww() {
             init)                  flags="--remote --agent -h --help" ;;
             auth)                  flags="--method -h --help" ;;
             teardown|down)         flags="-y --yes -h --help" ;;
-            list|ls)               flags="--json -h --help" ;;
+            list|ls)               flags="--versions --json -h --help" ;;
             tunnel-command|tunnel) flags="--host -h --help" ;;
             cache)                 flags="--from -h --help" ;;
             export-skill)          flags="--from --copy -h --help" ;;
+            build)                 flags="--cached -h --help" ;;
         esac
         COMPREPLY=($(compgen -W "$flags" -- "$cur"))
         return

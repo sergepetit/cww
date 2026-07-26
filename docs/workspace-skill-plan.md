@@ -2,12 +2,15 @@
 type: plan
 title: Built-in Workspace Skill
 description: Inject a built-in cww skill into every workspace at create, so the agent knows it is running inside a cww workspace — which commands are host-side, how the environment is wired, and guided flows for authoring the repo's .cww/ config from within
-status: implemented
+status: done
 created: 2026-07-14
+timestamp: 2026-07-14
 tags: [skills, agents, ux, onboarding]
 ---
 
 # Built-in Workspace Skill
+
+**Done 2026-07-14**: unit-tested, with a host Docker pass.
 
 ## Problem
 

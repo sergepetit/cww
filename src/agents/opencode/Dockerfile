@@ -29,6 +29,13 @@ USER root
 # without it, so a global copy would never be used.
 RUN npm install -g opencode-ai chrome-devtools-mcp@1.5.0 typescript-language-server
 
+# Stamp the installed CLI version into the image. It is nowhere in image
+# metadata, so this file is what lets 'cww list --versions' report what a
+# workspace runs without launching the agent. First line only; a failure leaves
+# the file empty rather than breaking the build, and the host degrades to '?'.
+RUN mkdir -p /usr/local/share/cww && \
+    opencode --version 2>/dev/null | head -1 > /usr/local/share/cww/agent-version
+
 # Disable the auto-updater — a disposable container never self-updates.
 # Belt and braces: this env var plus "autoupdate": false in opencode.json.
 ENV OPENCODE_DISABLE_AUTOUPDATE=true

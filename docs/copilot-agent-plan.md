@@ -2,12 +2,16 @@
 type: plan
 title: GitHub Copilot CLI Agent Plan
 description: Add GitHub Copilot CLI as a fourth agent, including its BYOK mode so a workspace can run against a third-party OpenAI-compatible endpoint (e.g. a LAN llama.cpp server)
-status: done — all four phases host-verified 2026-07-21, including BYOK against the real llama.cpp/Qwen host
+status: done
 created: 2026-07-21
+timestamp: 2026-07-21
 tags: [agents, copilot, byok, config]
 ---
 
 # GitHub Copilot CLI Agent Plan
+
+**Done 2026-07-21**: all four phases host-verified, including BYOK against the real
+llama.cpp/Qwen host.
 
 ## Context
 

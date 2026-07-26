@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CWW_AGENTS } from "../src/agents/registry";
-import { projectImagePlan, usesBaseImageArg } from "../src/lib/project-image";
+import { STALE_IMAGE_DAYS } from "../src/lib/docker";
+import { projectImagePlan, staleAgentImageNotice, usesBaseImageArg } from "../src/lib/project-image";
 
 // A throwaway project dir, optionally carrying a .cww/Dockerfile.
 function projectWith(dockerfile?: string): string {
@@ -47,6 +48,31 @@ describe("projectImagePlan", () => {
   test("the project name is sanitized like container/task names", () => {
     const dir = projectWith(DOCKERFILE);
     expect(projectImagePlan(dir, "My App", "claude")?.tag).toBe("cww-project-my-app:claude");
+  });
+});
+
+describe("staleAgentImageNotice", () => {
+  const STALE = STALE_IMAGE_DAYS * 24;
+
+  test("says nothing below the threshold, or when the age is unknown", () => {
+    expect(staleAgentImageNotice("claude", STALE - 1)).toBeNull();
+    expect(staleAgentImageNotice("claude", 0)).toBeNull();
+    expect(staleAgentImageNotice("claude", null)).toBeNull();
+  });
+
+  test("names the image, the agent, the age, and the command that fixes it", () => {
+    const notice = staleAgentImageNotice("opencode", 45 * 24)!;
+    expect(notice).toContain("coder-workspace-workflow:opencode");
+    expect(notice).toContain("45d");
+    expect(notice).toContain("cww build opencode");
+    // Acting on it means not creating this workspace yet — say so.
+    expect(notice).toContain("Ctrl-C");
+  });
+
+  test("fires for every agent, and shares 'cww list''s threshold", () => {
+    for (const agent of CWW_AGENTS) {
+      expect(staleAgentImageNotice(agent, STALE)).toContain(`cww build ${agent}`);
+    }
   });
 });
 

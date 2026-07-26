@@ -2,12 +2,16 @@
 type: plan
 title: Agent Modularization Plan
 description: Restructure per-agent code and config into one self-contained folder per agent (src/agents/<name>/), so adding a new coding agent touches no shared file
-status: done — host Docker pass 2026-07-11 (zsh completion smoke-tested separately)
+status: done
 created: 2026-07-10
+timestamp: 2026-07-11
 tags: [agents, docker, refactor]
 ---
 
 # Agent Modularization Plan
+
+**Done 2026-07-11**, with a host Docker pass; the zsh completion was smoke-tested
+separately.
 
 ## Context
 

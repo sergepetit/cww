@@ -225,6 +225,8 @@ cww auth MISTRAL_API_KEY=...              # non-interactive
 
 Create a workspace: a fresh container that clones your repo and brings up the app's services, with a coding agent running in tmux. **The first create in a repo runs the setup flow inline** (clone URL + validated git token — see [Authentication setup](#authentication-setup)); later creates reuse the stored config. By default it checks out the host's current branch; `--branch <ref>` (alias `--ref`) overrides it, and a name that doesn't exist upstream is created as a fresh branch. On create it also builds the project's optional [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile) on top of the agent image, runs the project's optional `.cww/reset.sh` (if present), loads the [built-in workspace skill](#the-built-in-workspace-skill), copies your personal `.cww/skills/` into the container for whichever agent — plus `.cww/{commands,agents}/` for claude (see [Skills, commands, and agents](#skills-commands-and-agents-two-tiers)) — and auto-provisions any [dependency-cache](#dependency-caches-opt-in) dir the services file declares.
 
+A workspace runs the agent image as it stands at create time, for its whole life, so create **warns when that image is over 30 days old** — its agent CLI is that old too. It is advisory and never blocks: interrupt and run [`cww build <agent>`](#cww-build-agentall) if you want the workspace to start from the current release, or ignore it and carry on.
+
 `--agent <claude|vibe|opencode|copilot>` picks the coding agent (default: the project's `"agent"` in `~/.cww/config.json`, then `CWW_AGENT` from `~/.cww/env`, falling back to `claude`). The choice is recorded in the workspace's metadata: re-creating the workspace after its container was removed brings back the *same* agent, and switching agents means teardown + create.
 
 `--auth <method>` picks how the workspace's agent authenticates — the workspace receives **exactly that method's credential and nothing else** (see [Authentication setup](#authentication-setup)). Methods per agent: claude `oauth-token | api-key | none`, vibe `api-key | config-file`, opencode `anthropic-api-key | openai-api-key | openrouter-api-key | opencode-api-key | config-file`, copilot `github-token | provider | provider-key`. Resolution mirrors `--agent`: the flag, then the project's `"auth"` in `~/.cww/config.json`, then `CWW_AUTH` from `~/.cww/env`; with nothing configured, the agent's default method applies when its key is already stored, and otherwise create **asks once** and records the answer in the project's config. If the chosen method's key isn't stored yet, create hands off to the [`cww auth`](#cww-auth-agentgitkeyvalue-options) store flow inline. Like the agent, the method is recorded in the workspace's metadata and survives recreates.
@@ -330,10 +332,19 @@ cww teardown feature-auth -y    # Skip the confirmation prompt
 
 List all workspaces. The **PORTS** column shows each workspace's published bindings as `container->host` (e.g. `5174->49153`), covering the agent container and every service in the stack (empty unless the workspace is running). The host port may be one Docker auto-assigned — see [Project-specific services](#project-specific-services).
 
+The **IMAGE** column is the age of the image the workspace runs (`5h`, `12d`), which is also the age of its agent CLI: the CLI is installed when the image is built and never updates inside a workspace. It turns yellow past 30 days. A `*` marks a workspace whose image tag has been **rebuilt since it was created** — a container keeps its create-time image for life, so picking the rebuild up means `cww teardown` then `cww create`. Both facts come from Docker metadata rather than a command run inside the container, so stopped workspaces report them too; `-` means the container is gone and `?` that its image no longer exists locally.
+
+`--versions` adds a **VERSION** column with each workspace's agent CLI version. It is behind a flag because, unlike age and drift, the version is nowhere in Docker's metadata: every agent image stamps `<cli> --version` into a file at build time, and reading it costs a docker call per workspace (an `exec` for running ones, a throwaway container per distinct image otherwise). `?` means the image predates the stamp — it appears after that agent's next `cww build`.
+
 ```bash
-cww list           # Table format
-cww list --json    # JSON format
+cww list              # Table format
+cww list --versions   # ... with each workspace's agent CLI version
+cww list --json       # JSON format
 ```
+
+`--json` carries more than the table shows: the workspace's `branch` and creation time, and an `image` object with the tag it was created from (`ref`), the image id it actually runs, that image's build time, `ageHours`, and `drifted`. Combined with `--versions` it also carries `version`.
+
+See [Agent CLI updates](agent-cli-updates.md) for how a workspace's CLI is frozen, refreshed, and reported.
 
 ### `cww tunnel-command [workspace-name] [options]`
 
@@ -367,13 +378,18 @@ cww cache pip .cache/pip /home/developer/.cache/pip   # a custom cache
 
 Build or rebuild a per-agent Docker image. With no argument it builds the configured default agent's image (`CWW_AGENT` in `~/.cww/env`, falling back to `claude`); `all` builds every agent.
 
+Agent CLIs are installed **unpinned**, and a build **re-resolves them**: the agent image is built with `--no-cache` (its layers are little more than the `npm install -g <cli>`, so this is exactly the install being redone) and the shared base with `--pull`, which picks up a moved `ubuntu:26.04`. So `cww build` is how you get the current release of an agent — and it needs network access.
+
 ```bash
-cww build            # the default agent's image
+cww build            # the default agent's image, with today's CLI
 cww build vibe       # coder-workspace-workflow:vibe
-cww build opencode   # coder-workspace-workflow:opencode
-cww build copilot    # coder-workspace-workflow:copilot
 cww build all        # every agent
+cww build --cached   # rebuild from the layer cache: keeps the CLI already installed
 ```
+
+`--cached` is the escape hatch: it makes the build fast and offline-capable, at the price of the version staying put. Use it when iterating on a `Dockerfile`, or when a fresh build fails because a registry is unreachable.
+
+**A rebuilt image does not reach existing workspaces.** A container keeps the image it was created with for its whole life, so moving a workspace onto a new build means `cww teardown` then `cww create`. `cww list`'s IMAGE column marks the ones that are behind.
 
 ## Directory structure
 

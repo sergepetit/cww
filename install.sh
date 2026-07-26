@@ -158,6 +158,12 @@ success "Launcher created: $BIN_DIR/cww"
 # the default comes from CWW_AGENT in an existing ~/.cww/env, falling back to
 # claude. The other agents' images build on demand ('cww build <agent>', or on
 # first 'cww create --agent ...').
+#
+# No cache flags here, i.e. the equivalent of 'cww build --cached', and for the
+# same reason as create's implicit build: a first install has no stale agent CLI
+# layer to bust. Re-running this installer on a machine that already has the
+# layers therefore keeps the CLI version it already had — 'cww build <agent>'
+# is what re-resolves it (see docs/agent-cli-updates.md).
 DEFAULT_AGENT="claude"
 if [[ -f "$HOME/.cww/env" ]]; then
     # shellcheck disable=SC1091

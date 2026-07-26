@@ -95,7 +95,7 @@ A shim could pick the right server per project. We deliberately don't, because:
 
 (The `typescript-pinned` override documented in the user guide is not a cww shim — it is a per-repo escape hatch a user opts into, carrying the same retire-it-when-upstream-lands caveat. cww itself ships nothing.)
 
-- **`opencode-ai` is installed unpinned** in `src/agents/opencode/Dockerfile`. Whenever upstream fixes this, the next `cww build` picks it up with no cww change at all.
+- **`opencode-ai` is installed unpinned** in `src/agents/opencode/Dockerfile`. Whenever upstream fixes this, the next `cww build` picks it up with no cww change at all — a build re-resolves the CLI, and existing workspaces are told when they are behind (see [agent-cli-updates.md](agent-cli-updates.md); this premise did not actually hold until 2026-07-26).
 - **A workaround would not be inert once upstream lands.** Config entries merge over built-ins by id, and supplying a `command` replaces the built-in's `enabled` predicate — so an override would *shadow* a corrected built-in, and a separate server id would mean two servers attached to the same files. Either way someone has to notice and retire it, in a repo where nothing will remind them.
 - **The ecosystem will adopt TS 7 slowly.** Its package exports no classic compiler API (`"."` maps to `lib/version.cjs`; only `unstable/*` entry points exist), so `ts-loader`, `typescript-eslint`, `ts-jest` and similar cannot consume it yet. Real-world TS 7 usage will lag the npm dist-tag by a wide margin.
 

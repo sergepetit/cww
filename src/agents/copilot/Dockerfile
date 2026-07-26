@@ -15,6 +15,14 @@ USER root
 # cww browser stack over CDP — see mcp-config.json).
 RUN npm install -g @github/copilot chrome-devtools-mcp@1.5.0
 
+# Stamp the installed CLI version into the image. It is nowhere in image
+# metadata, so this file is what lets 'cww list --versions' report what a
+# workspace runs without launching the agent. First line only ('copilot
+# --version' adds an update nag); a failure leaves the file empty rather than
+# breaking the build, and the host degrades to '?'.
+RUN mkdir -p /usr/local/share/cww && \
+    copilot --version 2>/dev/null | head -1 > /usr/local/share/cww/agent-version
+
 # Bake the global MCP config so the chrome-devtools entry pointing at the cww
 # browser stack's CDP port is registered from the first session;
 # browser-hook.sh strips it when CWW_BROWSER=off. config.json pre-trusts

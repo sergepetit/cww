@@ -16,6 +16,13 @@ USER root
 RUN npm install -g @anthropic-ai/claude-code chrome-devtools-mcp@1.5.0 \
     typescript-language-server typescript
 
+# Stamp the installed CLI version into the image. It is nowhere in image
+# metadata, so this file is what lets 'cww list --versions' report what a
+# workspace runs without launching the agent. First line only; a failure leaves
+# the file empty rather than breaking the build, and the host degrades to '?'.
+RUN mkdir -p /usr/local/share/cww && \
+    claude --version 2>/dev/null | head -1 > /usr/local/share/cww/agent-version
+
 # Disable the auto-updater — a disposable container never self-updates.
 # (Note: this stops update *attempts* but does NOT remove the harmless
 # "No write permissions for auto-updates" /status diagnostic, which is an

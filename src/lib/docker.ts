@@ -27,6 +27,116 @@ export async function containerRunning(name: string): Promise<boolean> {
   return r.text().split("\n").includes(name);
 }
 
+// One `docker inspect` for a whole set of workspace containers: state, plus
+// the two image fields 'cww list' reports on. The template echoes .Name, so
+// results correlate by name rather than by argument order — inspect still
+// prints the containers it found when others are missing (and exits 1), and
+// missing ones simply don't come back. --type container keeps a same-named
+// image from matching, which would fail the template instead.
+const INSPECT_FMT = "{{.Name}}|{{.State.Running}}|{{.Image}}|{{.Config.Image}}";
+
+export interface ContainerInfo {
+  running: boolean;
+  imageId: string; // .Image — the image this container actually runs
+  imageRef: string; // .Config.Image — the tag it was created from
+}
+
+export function parseContainerInspect(text: string): Map<string, ContainerInfo> {
+  const out = new Map<string, ContainerInfo>();
+  for (const line of text.split("\n")) {
+    const [name, running, imageId, imageRef] = line.split("|");
+    if (!name || !imageId) continue;
+    // docker reports container names with a leading slash.
+    out.set(name.replace(/^\//, ""), {
+      running: running === "true",
+      imageId,
+      imageRef: imageRef ?? "",
+    });
+  }
+  return out;
+}
+
+export async function inspectContainers(names: string[]): Promise<Map<string, ContainerInfo>> {
+  const unique = [...new Set(names.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const r = await $`docker inspect --type container --format ${INSPECT_FMT} ${unique}`
+    .quiet()
+    .nothrow();
+  return parseContainerInspect(r.text());
+}
+
+const IMAGE_INSPECT_FMT = "{{.Id}}|{{.Created}}|{{.RepoTags}}";
+
+export interface ImageInfo {
+  id: string;
+  created: string; // RFC3339 build time
+}
+
+// Keyed by BOTH the image id and each of its repo tags, from one pass: a
+// caller can resolve the frozen id a container runs AND what a tag points at
+// today from the same map, without matching results back to the refs it asked
+// for. An id whose tag has since moved comes back untagged, which is exactly
+// the drift signal.
+export function parseImageInspect(text: string): Map<string, ImageInfo> {
+  const out = new Map<string, ImageInfo>();
+  for (const line of text.split("\n")) {
+    const [id, created, repoTags] = line.split("|");
+    if (!id || !created) continue;
+    const info: ImageInfo = { id, created };
+    out.set(id, info);
+    // {{.RepoTags}} renders a Go slice: "[repo:tag repo:other]".
+    for (const tag of (repoTags ?? "").replace(/^\[|\]$/g, "").split(/\s+/)) {
+      if (tag && tag !== "<none>:<none>") out.set(tag, info);
+    }
+  }
+  return out;
+}
+
+export async function inspectImages(refs: string[]): Promise<Map<string, ImageInfo>> {
+  const unique = [...new Set(refs.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const r = await $`docker image inspect --format ${IMAGE_INSPECT_FMT} ${unique}`.quiet().nothrow();
+  return parseImageInspect(r.text());
+}
+
+// How old an image may get before cww says something. An agent CLI is
+// installed when its image is built and never moves inside a container, so
+// this is really the age of the CLI. One threshold, shared by 'cww list' and
+// the create-time hint — two would drift apart.
+export const STALE_IMAGE_DAYS = 30;
+
+export function imageAgeHours(
+  created: string | null | undefined,
+  now: number = Date.now(),
+): number | null {
+  if (!created) return null;
+  const at = Date.parse(created);
+  // Clamped at 0: a host clock behind the daemon's shouldn't read as negative.
+  return Number.isNaN(at) ? null : Math.max(0, Math.round((now - at) / 3_600_000));
+}
+
+export function imageIsStale(ageHours: number | null): boolean {
+  return ageHours !== null && ageHours >= STALE_IMAGE_DAYS * 24;
+}
+
+// Read a small baked file out of a running container. Null when the container
+// is not running, the file is absent, or it is empty — every caller of these
+// two treats "couldn't read it" as unknown, never as an error.
+export async function readContainerFile(container: string, file: string): Promise<string | null> {
+  const r = await $`docker exec ${container} cat ${file}`.quiet().nothrow();
+  return r.exitCode === 0 ? r.text().trim() || null : null;
+}
+
+// Same, for a container that isn't running: a throwaway container over the
+// image, which costs a create+start (~a second) — so callers dedupe by image
+// rather than doing this per workspace. Takes an image id or tag, so a
+// workspace stuck on a superseded image is read from the image it actually
+// has.
+export async function readImageFile(image: string, file: string): Promise<string | null> {
+  const r = await $`docker run --rm --entrypoint cat ${image} ${file}`.quiet().nothrow();
+  return r.exitCode === 0 ? r.text().trim() || null : null;
+}
+
 // Fall back to locating a workspace's agent container by name pattern when no
 // session file exists. Expects an already-sanitized workspace name (which only
 // contains [a-z0-9-], so it is safe inside the anchored regex).

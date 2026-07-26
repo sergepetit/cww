@@ -2,12 +2,15 @@
 type: plan
 title: Copy Files Host ↔ Workspace (`cww cp`)
 description: A cww cp command that copies files between the host and a running workspace, scp-style (ws:path), resolving the container name and handing pushed files to the in-container developer user
-status: implemented (unit-tested; host Docker pass 2026-07-16)
+status: done
 created: 2026-07-16
+timestamp: 2026-07-16
 tags: [cli, ux, docker]
 ---
 
 # Copy Files Host ↔ Workspace (`cww cp`)
+
+**Done 2026-07-16**: unit-tested, with a host Docker pass.
 
 ## Problem
 

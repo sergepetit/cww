@@ -8,7 +8,8 @@
 import { $ } from "bun";
 import fs from "node:fs";
 import path from "node:path";
-import { agentImage, ensureAgentImage, type Agent } from "../agents/registry";
+import { agentImage, agentLabel, ensureAgentImage, type Agent } from "../agents/registry";
+import { imageAgeHours, imageIsStale, inspectImages } from "./docker";
 import { sanitizeName } from "./naming";
 import { die, info, success, warn } from "./ui";
 
@@ -46,6 +47,21 @@ export function usesBaseImageArg(dockerfileText: string): boolean {
   return dockerfileText.includes("BASE_IMAGE");
 }
 
+// The create-time age hint. A container keeps its create-time image for life,
+// so creating from an old agent image freezes an old CLI into the workspace
+// for as long as it exists — and the only moment that is cheap to fix is
+// before the container exists. Advisory, never blocking: it says what to type
+// and that acting means starting over, and leaves the choice alone. Pure, so
+// the wording and the threshold are covered without Docker; null means there
+// is nothing worth saying.
+export function staleAgentImageNotice(agent: Agent, ageHours: number | null): string | null {
+  if (!imageIsStale(ageHours)) return null;
+  return (
+    `${agentImage(agent)} was built ${Math.floor(ageHours! / 24)}d ago — the ${agentLabel(agent)} CLI in it is that old. ` +
+    `Ctrl-C and run 'cww build ${agent}' to create this workspace from the current release.`
+  );
+}
+
 // The image a new workspace container runs: the agent image, with the
 // project's optional .cww/Dockerfile layered on top. The agent image is
 // ensured first (it is the FROM), and the project layer is always rebuilt —
@@ -58,6 +74,16 @@ export async function resolveWorkspaceImage(
   agent: Agent,
 ): Promise<string> {
   await ensureAgentImage(agent);
+  // Against the AGENT image, even when a project layer is stacked on top: the
+  // project layer is rebuilt on every create, so its own age says nothing
+  // about the CLI, which lives underneath.
+  const base = agentImage(agent);
+  const notice = staleAgentImageNotice(
+    agent,
+    imageAgeHours((await inspectImages([base])).get(base)?.created),
+  );
+  if (notice) warn(notice);
+
   const plan = projectImagePlan(projectPath, projectName, agent);
   if (!plan) return agentImage(agent);
   if (!usesBaseImageArg(fs.readFileSync(plan.dockerfile, "utf8"))) {

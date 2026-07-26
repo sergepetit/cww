@@ -64,6 +64,20 @@ export function agentLabel(agent: string): string {
   return byId.get(agent)?.label ?? agent;
 }
 
+// Where every agent image stamps its CLI version at build time (see the
+// per-agent Dockerfiles). Absent from images built before that was added, so
+// readers must degrade rather than fail.
+export const AGENT_VERSION_FILE = "/usr/local/share/cww/agent-version";
+
+// The bare version out of a CLI's --version line, which every agent spells
+// differently: "2.1.216 (Claude Code)", "vibe 2.22.0", "1.18.4", "GitHub
+// Copilot CLI 1.0.73." all reduce to the number. Falls back to the trimmed
+// line, so an unrecognized format still shows something rather than nothing.
+export function parseAgentVersion(raw: string): string {
+  const line = raw.trim().split("\n")[0]!.trim();
+  return line.match(/\d+(?:\.\d+)+(?:[-+][\w.]+)?/)?.[0] ?? line;
+}
+
 // Per-agent auth preflight for the chosen method. The container
 // authenticates ONLY via env cww passes in — nothing is copied from the host
 // — so fail fast with instructions rather than dropping the user into a
@@ -273,26 +287,55 @@ export async function materializeCwwAssets(
 export interface BuildStep {
   tag: string;
   context: string; // build context, relative to the cww root
+  flags: string[]; // cache flags for this step
+}
+
+export interface BuildOptions {
+  cached?: boolean; // reuse the layer cache instead of re-resolving the CLI
 }
 
 // The ordered docker builds that produce an agent's image: the shared base
 // first (cww-base:latest — a plain, unnamespaced local tag; see
 // docker/base/Dockerfile for the collision caveat), then the agent's own
-// folder as a self-contained build context FROM that tag. The base is always
-// rebuilt — no freshness tracking: Docker's layer cache makes a no-op rebuild
-// take seconds, which is cheaper and safer than any staleness check (same
-// philosophy as the unconditional tmux.conf staging). Pure data so tests
-// cover ordering/tags/contexts without Docker.
-export function agentBuildPlan(agent: Agent): BuildStep[] {
+// folder as a self-contained build context FROM that tag.
+//
+// Both steps always run — no freshness tracking: Docker's layer cache makes a
+// no-op rebuild take seconds, which is cheaper and safer than any staleness
+// check (same philosophy as the unconditional tmux.conf staging). What the
+// cache must NOT silently reuse is the agent CLI: it is installed unpinned so
+// that upstream fixes arrive, and a cache hit on that RUN layer freezes the
+// version forever (docs/agent-cli-updates.md). Hence the split:
+//
+//   base  --pull      cheap registry check for a moved ubuntu:26.04; a full
+//                     --no-cache here would redo apt + node + bun + Temurin +
+//                     noVNC on every build, for minutes
+//   agent --no-cache  the agent Dockerfiles are thin — one 'npm install -g
+//                     <cli>' plus a few COPYs — so busting all of it IS
+//                     busting the CLI install
+//
+// Pure data so tests cover ordering/tags/contexts/flags without Docker.
+export function agentBuildPlan(agent: Agent, opts: BuildOptions = {}): BuildStep[] {
+  const fresh = !opts.cached;
   return [
-    { tag: "cww-base:latest", context: path.join("docker", "base") },
-    { tag: agentImage(agent), context: path.join("src", "agents", agent) },
+    {
+      tag: "cww-base:latest",
+      context: path.join("docker", "base"),
+      flags: fresh ? ["--pull"] : [],
+    },
+    {
+      tag: agentImage(agent),
+      context: path.join("src", "agents", agent),
+      flags: fresh ? ["--no-cache"] : [],
+    },
   ];
 }
 
 // Build one agent's image (base, then agent — see agentBuildPlan). Shared by
-// 'cww build' and ensureAgentImage.
-export async function buildAgentImage(agent: string): Promise<void> {
+// 'cww build', which is explicit and therefore fresh, and ensureAgentImage,
+// which only ever builds a MISSING image and passes cached: there is no stale
+// CLI layer to bust on a first build, and base layers left from another
+// agent's image should be reused rather than re-downloaded.
+export async function buildAgentImage(agent: string, opts: BuildOptions = {}): Promise<void> {
   validateAgent(agent);
   const cwwDir = getCwwDir();
   // tmux.conf is staged into the base build context (same dance as install.sh).
@@ -304,22 +347,33 @@ export async function buildAgentImage(agent: string): Promise<void> {
   } catch {
     // Missing template is tolerated, like the bash lib's `|| true`.
   }
-  for (const step of agentBuildPlan(agent)) {
+  for (const step of agentBuildPlan(agent, opts)) {
     info(`Building ${step.tag} ...`);
-    await $`docker build -t ${step.tag} ${path.join(cwwDir, step.context)}`;
+    const r =
+      await $`docker build ${step.flags} -t ${step.tag} ${path.join(cwwDir, step.context)}`.nothrow();
+    if (r.exitCode !== 0) {
+      // A fresh build re-resolves the CLI from npm/pipx and pulls the base, so
+      // it needs the network where a cached one didn't. Name the way out.
+      die(
+        opts.cached
+          ? `Build failed: ${step.tag}`
+          : `Build failed: ${step.tag}. A fresh build re-installs the agent CLI and pulls the base image, so it needs network access — 'cww build ${agent} --cached' rebuilds from the layer cache instead (keeping the CLI version you already have).`,
+      );
+    }
   }
   success(`Image built: ${agentImage(agent)}`);
 }
 
 // Make sure the agent's image exists locally, offering to build it on the
-// spot.
+// spot. Cached: see buildAgentImage — creating a workspace should never be
+// the thing that silently moves an agent CLI, in either direction.
 export async function ensureAgentImage(agent: Agent): Promise<void> {
   const image = agentImage(agent);
   const r = await $`docker image inspect ${image}`.quiet().nothrow();
   if (r.exitCode === 0) return;
   warn(`Image '${image}' is not built yet.`);
   if (confirm("Build it now (may take a few minutes)?")) {
-    await buildAgentImage(agent);
+    await buildAgentImage(agent, { cached: true });
   } else {
     die(`Run 'cww build ${agent}' first.`);
   }

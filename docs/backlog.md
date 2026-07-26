@@ -55,28 +55,6 @@ the moment OpenCode fixes the underlying lifecycle bug, the same reasoning as
 [typescript-lsp-upstream.md](typescript-lsp-upstream.md). The user asking "why
 is the LSP not activated?" is the realistic path, and that one works.
 
-## Nothing ever prompts an image rebuild — agent CLIs go stale invisibly
-
-Agent CLIs are installed **unpinned** on purpose, so that upstream fixes arrive
-with the next `cww build` (the argument [typescript-lsp-upstream.md](typescript-lsp-upstream.md)
-explicitly relies on). But nothing ever tells you to run it: `ensureAgentImage`
-(`src/agents/registry.ts`) only checks that the image *exists*. A workspace
-created today runs whatever your last build produced, however many weeks ago,
-and `docker image inspect` is the only way to find out.
-
-This is the real cost that self-update suppression is often blamed for. The
-suppression itself is deliberate and stays (a disposable container that mutates
-its own tooling mid-session is worse — for vibe it is fatal, see
-`src/agents/vibe/Dockerfile`); the missing half is a freshness signal.
-
-- **Fix:** at create, compare the agent image's `Created` against a threshold
-  and print a hint suggesting `cww build <agent>`.
-- **Trap to avoid:** the hint must ship together with a cache-busting rebuild
-  path (`--pull`, or `--no-cache` for the CLI layer). A plain `docker build`
-  hits the cached `RUN npm install -g …` layer, leaves `Created` unchanged, and
-  the hint then fires forever while nothing actually updates — worse than no
-  hint at all.
-
 ## `bun run dev` does not survive a foreground agent shell call
 
 Twice on 2026-07-22 the agent ran the smoketest's dev server in the foreground,
