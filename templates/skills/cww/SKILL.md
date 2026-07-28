@@ -80,6 +80,12 @@ its pid to `/tmp/cww-browser.pid`. If the chrome-devtools MCP can't connect:
 - **No other host credentials exist in here**, and none should: never ask
   the user to paste tokens, keys, or the contents of host files like
   `~/.cww/env` into the workspace.
+- **If git auth suddenly breaks mid-workspace**, ask whether they attached
+  VS Code to this container: its Dev Containers extension copies the host
+  `~/.gitconfig` in and injects its own credential helper, overwriting the
+  workspace's. Host-side fix — `"dev.containers.copyGitConfig": false` in VS
+  Code settings, then `cww stop` + `cww start` to restore this container's
+  git setup (`references/git-strategy.md`).
 
 ## The cww command runs on the user's machine, not here
 

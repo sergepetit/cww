@@ -2,7 +2,7 @@
 type: guide
 title: cww User Guide
 description: Full user documentation — installation, authentication, every command, the Docker image, project services, the built-in browser, configuration, and troubleshooting
-timestamp: 2026-07-15
+timestamp: 2026-07-28
 ---
 
 # cww User Guide
@@ -717,4 +717,21 @@ You're loading the app over `http://<host-ip>:port`. A plain-`http` non-loopback
 ssh -N -L 5174:localhost:5174 you@docker-host
 # open http://localhost:5174
 ```
+
+### Git auth breaks after attaching VS Code to the container
+
+Signature: git worked in the workspace, then you attached VS Code to the running container to read the code, and clone/fetch/push started failing.
+
+VS Code's Dev Containers extension does two things automatically when it attaches to a container: it copies your **host** `~/.gitconfig` in, and it injects its **own credential helper** that routes git operations back through host authentication. A cww workspace already has its own git setup — the identity and the env-reading credential helper that serves the repo-scoped token, written by the container entrypoint on every boot — so the forwarded config overwrites it and git auth breaks.
+
+Turn the copying off, once, in VS Code:
+
+1. Open Settings (`Cmd + ,` / `Ctrl + ,`).
+2. Search for `copyGitConfig`.
+3. Uncheck **Dev > Containers: Copy Git Config** — or put it in `settings.json` directly:
+   ```json
+   "dev.containers.copyGitConfig": false
+   ```
+
+For a workspace that's already been clobbered, `cww stop` + `cww start` restores it: the entrypoint rewrites the identity and credential helper on every boot.
 See [docs/accessing-services.md](accessing-services.md).

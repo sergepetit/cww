@@ -2,7 +2,7 @@
 type: reference
 title: cww Git Strategy
 description: The two git mechanics cww owns — clone-in-container and the developer's own scoped credential — plus attribution and example workflows
-timestamp: 2026-07-14
+timestamp: 2026-07-28
 ---
 
 # cww Git Strategy
@@ -75,6 +75,7 @@ Since the push credential is also the developer's, both the commit author and th
 - **SSH remotes are rewritten to HTTPS** (`normalizeGitUrl`) because SSH keys are deliberately not mounted into the container. If your host is on plain http or a non-443 port (common for self-hosted Forgejo/Gitea), the setup flow persists the exact URL you confirm per project in `~/.cww/config.json`.
 - **Per-user isolation comes from the OS:** each developer runs cww under their own account on the box, with their tokens in their own `~/.cww/credentials` (mode 600). No shared token, no cross-user access.
 - **No signing key** in the container.
+- **Attaching VS Code to the container overwrites this setup.** The Dev Containers extension copies the host `~/.gitconfig` in and injects its own credential helper routing git back through host auth, replacing the identity and env-reading helper above — so git auth breaks in a workspace you only opened to read code. Set `"dev.containers.copyGitConfig": false` in VS Code; see [the user guide](user-guide.md#git-auth-breaks-after-attaching-vs-code-to-the-container).
 
 ## Disk & performance
 
