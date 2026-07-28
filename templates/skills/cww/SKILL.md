@@ -61,15 +61,38 @@ its pid to `/tmp/cww-browser.pid`. If the chrome-devtools MCP can't connect:
 - Read `/tmp/cww-browser.log`, then rerun `/usr/local/bin/cww-browser` in the
   background. Its pidfile guard makes this safe: it refuses to start while
   another copy is alive.
-- If it refuses but the stack is still broken, kill the surviving copy —
-  `kill $(cat /tmp/cww-browser.pid)`, plus any leftovers found with
-  `pgrep -af 'Xvfb|x11vnc|websockify|chrom'` — then rerun it.
-- Repeated `[cww-browser] Browser exited; restarting in 1s ...` log lines mean
-  the browser is crashing, not merely closed. One known cause is a full disk
-  (check `df -h /`), e.g. after a Docker disk-quota incident on the host:
-  freeing space lets the loop revive the browser, but the helpers
-  (Xvfb/x11vnc/websockify) are not supervised and never restart on their own —
-  hence the kill-and-rerun recovery above.
+- If it refuses but the stack is still broken, **trust `pgrep`, not the
+  pidfile**: a live supervisor pid with no `Xvfb`/`x11vnc`/`websockify`/browser
+  under it is the common failure, and the refusal message reads as a false
+  all-clear. Kill the survivors *by explicit pid* (`kill <pid>` from
+  `pgrep -af 'Xvfb|x11vnc|websockify'` and the pidfile), then rerun.
+- **Do not use `pkill -f` here.** The pattern also matches your own tool's
+  `bash -c` wrapper, which contains the pattern text verbatim: the shell kills
+  itself mid-command (seen as exit 144) and every later step in that same
+  command — typically the cleanup `rm` — silently never runs. One step per
+  call, and re-check state after each; a bracketed pattern is not a reliable
+  dodge.
+- **Clear the stale X lock before relaunching.** A killed Xvfb leaves
+  `/tmp/.X99-lock` and `/tmp/.X11-unix/X99` behind, and the fresh one refuses
+  to claim display 99. Symptom in the log: `Server is already active for
+  display 99`, then the browser looping on `Missing X server or $DISPLAY`.
+  Full recovery, as separate calls:
+
+      kill <supervisor-pid> <helper-pids>     # by pid, never pkill -f
+      rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 /tmp/cww-browser.pid
+      setsid nohup /usr/local/bin/cww-browser > /tmp/cww-browser.log 2>&1 < /dev/null &
+
+  Use `setsid` so the supervisor outlives the shell that started it. Confirm
+  with `curl -s http://127.0.0.1:9222/json/version`; the chrome-devtools MCP
+  reconnects on its own once CDP answers — no session restart needed.
+- Repeated `[cww-browser] Browser exited; restarting in 1s ...` means the
+  browser is crashing, not merely closed. Read the log *head*, not the tail —
+  the root cause is the first error, and the tail is drowned in harmless
+  `dbus`/`gcm`/GPU noise. Known causes: the stale X lock above (check first —
+  it costs one `ls`), and a full disk (`df -h /`) after a Docker disk-quota
+  incident on the host. Freeing space lets the loop revive the browser, but the
+  helpers (Xvfb/x11vnc/websockify) are not supervised and never restart on
+  their own — hence the kill-and-rerun above.
 
 ## Git rules
 
