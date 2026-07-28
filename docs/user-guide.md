@@ -269,7 +269,7 @@ cww attach                 # From the repo directory (single workspace)
 
 ### `cww start [workspace-name]`
 
-Resume a stopped workspace — bring its container and services back up (the inverse of `cww stop`), without attaching. On the way it refreshes the workspace's secrets from the current `~/.cww/env` and `~/.cww/credentials`, so a token renewed since the workspace was created applies from this start on (see [Renewing a token](#renewing-a-token)). Use `cww create` to make a *new* workspace; `cww attach`/`cww shell` also resume a stopped one on their way in, with the same refresh.
+Resume a stopped workspace — bring its container and services back up (the inverse of `cww stop`), without attaching. On the way it refreshes the workspace's secrets from the current `~/.cww/env` and `~/.cww/credentials`, so a token renewed since the workspace was created applies from this start on (see [Renewing a token](#renewing-a-token)), and re-copies the [built-in `cww` skill](#the-built-in-workspace-skill) from the installed cww, so an upgraded cww reaches existing workspaces. Use `cww create` to make a *new* workspace; `cww attach`/`cww shell` also resume a stopped one on their way in, with the same refresh.
 
 ```bash
 cww start feature-auth    # By workspace name
@@ -518,9 +518,11 @@ Skills are the open [Agent Skills](https://agentskills.io) format (a folder with
 
 Every workspace also gets a built-in `cww` skill (same Agent Skills format), loaded at create into the agent's skills dir as `cww/` — `~/.claude/skills/cww`, `~/.vibe/skills/cww`, `~/.config/opencode/skills/cww`, or `~/.copilot/skills/cww`. It tells the agent it is running inside a cww workspace: how the environment is wired (sibling service containers, loopback-published ports it can't see from inside, the built-in browser), that every `cww` command is host-side (so it answers "how do I reset the data?" with *"on your host machine, run `cww reset …`"* instead of inventing docker commands), the git ground rules, and guided flows for authoring the repo's `.cww/` config from inside — including the loop that makes such changes take effect (commit + push, you pull on the host, then run the applying command there).
 
-For factual reference the skill bundles this user guide plus [accessing-services.md](accessing-services.md) and [git-strategy.md](git-strategy.md) as skill references, copied from the installed cww's `docs/` at create time — a workspace always carries the docs matching the cww version that created it (one created before an upgrade keeps its old copy until recreated).
+For factual reference the skill bundles this user guide plus [accessing-services.md](accessing-services.md) and [git-strategy.md](git-strategy.md) as skill references, copied from the installed cww's `docs/` at create time.
 
-Disable it with `CWW_SKILL=off` in `~/.cww/env` (global) or `"skill": "off"` in the project's `~/.cww/config.json` entry (per-project) — the same two-level pattern as the browser flag. A personal `.cww/skills/cww/` folder overrides the built-in skill (personal assets are copied after it).
+The skill is also **re-copied on every start** (`cww start`, and the `cww attach`/`cww shell` paths that resume a stopped workspace), so a workspace created before a cww upgrade picks up the current skill and docs the next time you start it — no recreate. Unlike the agent CLI, which is frozen in the image for the container's whole life ([Agent CLI Updates](agent-cli-updates.md)), the skill is a handful of files, so keeping it current is cheap. A workspace that is already running is refreshed at its next `cww stop` + `cww start`.
+
+Only the skill's *content* is refreshed, never the decision to have one: disable it with `CWW_SKILL=off` in `~/.cww/env` (global) or `"skill": "off"` in the project's `~/.cww/config.json` entry (per-project) — the same two-level pattern as the browser flag — and a workspace created that way stays without it, like every other create-time choice. A personal `.cww/skills/cww/` folder overrides the built-in skill (personal assets are copied after it), and the refresh leaves that override in place.
 
 ## Built-in headful browser
 

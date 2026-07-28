@@ -7,7 +7,7 @@ import path from "node:path";
 // of the registry's import graph (agent modules -> container-fs/ui; registry
 // -> agent modules; this file -> registry), so a module-eval-time read could
 // hit a partially initialized module.
-import { CWW_AGENTS } from "../agents/registry";
+import { CWW_AGENTS, refreshWorkspaceSkill } from "../agents/registry";
 import { hardenRefreshFile, refreshWorkspaceSecrets } from "./env-refresh";
 import { error, info } from "./ui";
 
@@ -152,7 +152,9 @@ export async function findWorkspaceContainer(sanitizedWorkspace: string): Promis
 // etc.) still down. Fall back to the agent container alone when the compose
 // files are gone (e.g. the pattern-matched path, with no task dir). Current
 // secrets are copied in first, so the restarted agent picks up tokens
-// rotated since the container was created (see env-refresh.ts).
+// rotated since the container was created (see env-refresh.ts); the built-in
+// cww skill is re-synced once the container is up, so an upgraded cww reaches
+// existing workspaces too (see refreshWorkspaceSkill).
 export async function startTaskStack(taskDir: string | null, container: string): Promise<void> {
   await refreshWorkspaceSecrets(taskDir, container);
   if (taskDir && fs.existsSync(path.join(taskDir, "docker-compose.yml"))) {
@@ -165,6 +167,13 @@ export async function startTaskStack(taskDir: string | null, container: string):
     await $`docker start ${container}`;
   }
   await hardenRefreshFile(container);
+  // Best-effort: a skill that can't be re-copied must never keep the user out
+  // of a workspace.
+  try {
+    await refreshWorkspaceSkill(taskDir, container);
+  } catch {
+    // ignore
+  }
 }
 
 export interface PortBinding {

@@ -22,6 +22,11 @@ visible rather than silent.
 | The image `coder-workspace-workflow:<agent>` | freezes that version, and stamps it into `/usr/local/share/cww/agent-version` |
 | A workspace container | inherits the image's CLI and keeps it for the container's whole life |
 
+Not everything in a workspace is frozen this way. The built-in `cww` skill is
+re-copied from the installed cww on every start ([workspace-skill-plan.md](workspace-skill-plan.md#re-syncing-an-existing-workspace)) —
+it is a dozen small files, where the CLI is an image layer. The freeze below is
+about the CLI specifically, not about workspaces being immutable on principle.
+
 Self-update is suppressed in all four images, deliberately, and stays that way:
 a disposable container that mutates its own tooling mid-session is worse than
 one that doesn't. For vibe it is load-bearing rather than belt-and-braces — an

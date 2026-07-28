@@ -11,7 +11,9 @@ for you, plus sibling containers for the project's services — that the user
 created from their own machine with `cww create`. This skill explains how the
 environment is wired, which commands exist only on the user's machine, and
 how to help configure cww for this repo from in here. It describes cww as of
-the version that created this workspace.
+the version on the user's machine the last time this workspace was created or
+started — cww re-copies this skill, and the docs it references, on every
+start.
 
 Facts about *this* workspace live in the environment, not in this file:
 

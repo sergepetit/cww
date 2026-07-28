@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { skillEnabled } from "../lib/config";
 import { copyDirIntoContainer } from "../lib/container-fs";
+import { readSession, type Session } from "../lib/session";
 import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
 import { copilotAgent } from "./copilot/agent";
@@ -231,10 +232,13 @@ export function builtinSkillPlan(
 
 // Stage the built-in skill (SKILL.md + references/ assembled from the
 // install's docs/) and copy it into the container. Missing pieces degrade to
-// a warning — never a failed create.
-async function materializeBuiltinSkill(container: string, agent: Agent): Promise<void> {
-  const plan = builtinSkillPlan(agent);
-  if (!plan) return;
+// a warning — never a failed create. Takes the plan rather than recomputing
+// it, so the refresh path below can supply one of its own.
+async function applyBuiltinSkill(
+  container: string,
+  plan: BuiltinSkillPlan,
+  refresh = false,
+): Promise<void> {
   if (!fs.existsSync(path.join(plan.src, "SKILL.md"))) {
     warn(`Built-in cww skill missing at ${plan.src} (incomplete install?); skipped.`);
     return;
@@ -254,11 +258,65 @@ async function materializeBuiltinSkill(container: string, agent: Agent): Promise
       fs.copyFileSync(plan.troubleshooting, path.join(refDir, "troubleshooting.md"));
     }
     if (await copyDirIntoContainer(stage, container, plan.dest)) {
-      info(`Loaded the built-in cww skill (${plan.dest.replace("/home/developer", "~")})`);
+      const verb = refresh ? "Refreshed" : "Loaded";
+      info(`${verb} the built-in cww skill (${plan.dest.replace("/home/developer", "~")})`);
     }
   } finally {
     fs.rmSync(stage, { recursive: true, force: true });
   }
+}
+
+// Whether an EXISTING workspace's built-in skill should be re-copied, and from
+// where — null when it shouldn't be. Deliberately does not consult CWW_SKILL:
+// whether a workspace carries the skill at all was settled at create (the
+// caller checks the container for the create-time answer), and 'cww start'
+// never loads ~/.cww/env, so reading the ambient toggle here would only
+// misjudge it. Pure, so tests cover the routing without Docker.
+export function skillRefreshPlan(session: Session): BuiltinSkillPlan | null {
+  const agent = session.agent ?? "claude";
+  // An agent id from a stale session (one whose backend cww no longer has).
+  if (!byId.has(agent)) return null;
+  // A personal skill named 'cww' owns that folder in the container — create
+  // copies personal assets last for exactly that reason. Don't undo it.
+  const repo = session.mainRepo;
+  if (repo && fs.existsSync(path.join(repo, ".cww", "skills", "cww", "SKILL.md"))) return null;
+  return builtinSkillPlan(agent as Agent, { CWW_SKILL: "on" });
+}
+
+// Re-load the built-in cww skill into a workspace that already exists, on
+// every start (see startTaskStack). The skill and its references/ come from
+// the cww install, so without this a workspace keeps the copy that was
+// current the day it was created and upgrading cww would only ever fix new
+// workspaces. Unlike the agent CLI — frozen in the image for a container's
+// whole life (docs/agent-cli-updates.md) — this is a few files a docker cp
+// away, so a start is the cheap moment to re-sync them.
+//
+// Only the skill's CONTENT is refreshed, never the decision to have one: a
+// workspace created with CWW_SKILL=off has no skill folder, and this leaves it
+// that way, like every other create-time choice (see env-refresh.ts). Quietly
+// a no-op without a task dir (attach/shell's pattern-matched fallback).
+export async function refreshWorkspaceSkill(
+  taskDir: string | null,
+  container: string,
+): Promise<void> {
+  if (!taskDir) return;
+  // A corrupt session.json degrades to no refresh; other commands complain
+  // about the file itself.
+  let session: Session = {};
+  try {
+    session = readSession(taskDir);
+  } catch {
+    return;
+  }
+  const plan = skillRefreshPlan(session);
+  if (!plan) return;
+  // The create-time answer, read off the container itself: no folder means
+  // this workspace was created without the skill (or by a cww too old to have
+  // had one), and a start is not the place to change that.
+  if ((await $`docker exec ${container} test -d ${plan.dest}`.quiet().nothrow()).exitCode !== 0) {
+    return;
+  }
+  await applyBuiltinSkill(container, plan, true);
 }
 
 // Load the built-in cww skill and personal host-side assets (e.g.
@@ -271,7 +329,8 @@ export async function materializeCwwAssets(
   container: string,
   agent: Agent = "claude",
 ): Promise<void> {
-  await materializeBuiltinSkill(container, agent);
+  const skill = builtinSkillPlan(agent);
+  if (skill) await applyBuiltinSkill(container, skill);
   const { copies, skipped } = personalAssetPlan(projectPath, agent);
   for (const { kind, src, dest } of copies) {
     if (await copyDirIntoContainer(src, container, dest)) {

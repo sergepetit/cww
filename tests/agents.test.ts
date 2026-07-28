@@ -19,6 +19,7 @@ import {
   parseAgentVersion,
   personalAssetPlan,
   resolveAgent,
+  skillRefreshPlan,
   validateAgent,
 } from "../src/agents/registry";
 import { claudeContainerEnv } from "../src/agents/claude/agent";
@@ -271,6 +272,51 @@ describe("builtinSkillPlan", () => {
       expect(builtinSkillPlan("claude", { CWW_SKILL: value })).toBeNull();
     }
     expect(builtinSkillPlan("claude", { CWW_SKILL: "on" })).not.toBeNull();
+  });
+});
+
+describe("skillRefreshPlan", () => {
+  // A throwaway repo root, optionally carrying a personal skill named 'cww'.
+  function repo(personalCwwSkill = false): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+    if (personalCwwSkill) {
+      const skill = path.join(dir, ".cww", "skills", "cww");
+      fs.mkdirSync(skill, { recursive: true });
+      fs.writeFileSync(path.join(skill, "SKILL.md"), "---\nname: cww\n---\n");
+    }
+    return dir;
+  }
+
+  test("plans the same copy builtinSkillPlan does, for the session's agent", () => {
+    const plan = skillRefreshPlan({ agent: "opencode", mainRepo: repo() });
+    expect(plan?.dest).toBe("/home/developer/.config/opencode/skills/cww");
+    expect(plan?.src).toBe(path.join(getCwwDir(), "templates", "skills", "cww"));
+    expect(plan?.references.map((r) => path.basename(r))).toEqual([...BUILTIN_SKILL_REFERENCES]);
+  });
+
+  test("a session with no recorded agent is a claude workspace", () => {
+    expect(skillRefreshPlan({})?.dest).toBe("/home/developer/.claude/skills/cww");
+  });
+
+  test("an agent id cww no longer has refreshes nothing", () => {
+    expect(skillRefreshPlan({ agent: "cursor" })).toBeNull();
+  });
+
+  test("a personal .cww/skills/cww overrides the built-in one — leave it alone", () => {
+    expect(skillRefreshPlan({ agent: "claude", mainRepo: repo(true) })).toBeNull();
+    // Only that exact name shadows it.
+    expect(skillRefreshPlan({ agent: "claude", mainRepo: repo(false) })).not.toBeNull();
+  });
+
+  test("ignores CWW_SKILL — the create-time answer is read off the container", () => {
+    const restore = process.env.CWW_SKILL;
+    process.env.CWW_SKILL = "off";
+    try {
+      expect(skillRefreshPlan({ agent: "claude" })).not.toBeNull();
+    } finally {
+      if (restore === undefined) delete process.env.CWW_SKILL;
+      else process.env.CWW_SKILL = restore;
+    }
   });
 });
 

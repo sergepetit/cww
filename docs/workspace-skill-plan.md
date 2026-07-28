@@ -1,7 +1,7 @@
 ---
 type: plan
 title: Built-in Workspace Skill
-description: Inject a built-in cww skill into every workspace at create, so the agent knows it is running inside a cww workspace — which commands are host-side, how the environment is wired, and guided flows for authoring the repo's .cww/ config from within
+description: Inject a built-in cww skill into every workspace at create (and re-sync it on every start), so the agent knows it is running inside a cww workspace — which commands are host-side, how the environment is wired, and guided flows for authoring the repo's .cww/ config from within
 status: done
 created: 2026-07-14
 timestamp: 2026-07-14
@@ -11,6 +11,11 @@ tags: [skills, agents, ux, onboarding]
 # Built-in Workspace Skill
 
 **Done 2026-07-14**: unit-tested, with a host Docker pass.
+
+**Extended 2026-07-28**: the copy is no longer create-time only. `startTaskStack`
+re-copies the skill on every start (`refreshWorkspaceSkill`,
+`src/agents/registry.ts`), so an upgraded cww reaches workspaces that already
+exist — see [Re-syncing an existing workspace](#re-syncing-an-existing-workspace).
 
 ## Problem
 
@@ -141,8 +146,9 @@ asset block).
 Alternatives considered:
 
 - *Bake into the per-agent images.* Rejected: updating the skill would
-  require `cww build`, and images go stale silently. Create-time copy means
-  every new workspace carries the skill matching the installed cww version.
+  require `cww build`, and images go stale silently. Copying it in means every
+  new workspace carries the skill matching the installed cww version — and,
+  since 2026-07-28, that existing ones catch up on their next start (below).
 - *Render a template with workspace facts.* Unnecessary: the facts that vary
   per workspace (name, branch, repo URL, browser on/off) are already in the
   container's env; the skill points at them instead. A static file is
@@ -155,6 +161,40 @@ Alternatives considered:
   docs would describe cww's HEAD, not the installed version.
 - *Have the user commit it to the repo.* That's what team `.claude/skills`
   are for; the point here is zero setup and staying current with cww itself.
+
+### Re-syncing an existing workspace
+
+*Added 2026-07-28.* Create-time-only delivery left a gap the create-time
+argument doesn't cover: a workspace keeps the skill version it was born with,
+so upgrading cww fixes new workspaces and nothing else. With the skill now
+carrying operational procedures (browser recovery, agent troubleshooting), a
+month-old workspace is exactly where the fix is most wanted.
+
+The re-sync rides `startTaskStack` (`src/lib/docker.ts`) — the one seam every
+resume path funnels through (`cww start`, `cww attach`, `cww shell`, and
+create's start-a-stopped-one branch), already the home of the secret refresh.
+`refreshWorkspaceSkill` reads the workspace's session for its agent, then
+re-copies the staged skill with the same `applyBuiltinSkill` create uses.
+Best-effort, wrapped in a `try` at the call site: a skill that can't be copied
+must never keep the user out of a workspace.
+
+Two things it deliberately does **not** do:
+
+- **Re-decide whether the workspace has a skill.** The create-time answer is
+  read off the container (`test -d <dest>`): no folder means it was created
+  with `CWW_SKILL=off`, or by a cww too old to have had a skill, and a start
+  leaves it that way. That also avoids re-deriving the toggle on a code path
+  that never loads `~/.cww/env` — the same line env-refresh draws, where only
+  secrets ride the start-time channel and everything else stays a create-time
+  decision.
+- **Clobber a personal override.** `skillRefreshPlan` returns null when the
+  project has a `.cww/skills/cww/SKILL.md`, because that folder in the
+  container is the user's copy, not cww's.
+
+No freshness tracking, no hashes: the copy is a dozen small files, and an
+unconditional docker cp is cheaper and safer than any staleness check — the
+same reasoning as the unconditional tmux.conf staging and `agentBuildPlan`'s
+refusal to guess at image freshness.
 
 ### Opt-out
 
