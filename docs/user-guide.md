@@ -401,6 +401,10 @@ Your project repo is never modified or used as a worktree. Per-workspace state l
 ~/.cww/
   env                          # Agent tokens + defaults, read host-side (never forwarded whole)
   services.env                 # (optional) pass-through env loaded into every workspace
+  services/                    # (optional) narrower pass-through env layers
+    myproject.env              #   every workspace of this project
+    myproject/                 #   one file per workspace of this project
+      feature-auth.env         #     just this workspace
   credentials                  # Git tokens, one per repo/host (git-credentials format, mode 600)
   config.json                  # Per-project settings (clone URL, agent/auth/browser overrides)
   tasks/                       # Global per-workspace metadata (host side)
@@ -610,7 +614,21 @@ Because the tunnel's local side is the stable container port, you keep **one** b
 
 ### Passing env to workspaces
 
-`~/.cww/env` itself never enters a container — each workspace receives only its auth method's key plus the repo's git credential. Env your app or its tooling needs at runtime goes in **`~/.cww/services.env`** (see `examples/services.env.example`), which is loaded verbatim into every workspace container at create time; per-project values fit better as `environment:` entries in the repo's `.cww/docker-compose.services.yml`.
+`~/.cww/env` itself never enters a container — each workspace receives only its auth method's key plus the repo's git credential. Env your app or its tooling needs at runtime goes in the **services env** files (see `examples/services.env.example`), loaded verbatim into the workspace container. There are three layers, from broadest to narrowest:
+
+| File | Applies to |
+|------|-----------|
+| `~/.cww/services.env` | Every workspace on this machine |
+| `~/.cww/services/<project>.env` | Every workspace of this project |
+| `~/.cww/services/<project>/<workspace>.env` | Just this workspace |
+
+A more specific layer overrides a broader one, so a machine-wide default can be re-pointed for one project, or for one workspace — say a shared `DATABASE_URL` in the global file, a staging endpoint for one project, and a throwaway one in the workspace where you're testing a migration. All three are optional; a missing file is not an error.
+
+`<project>` and `<workspace>` are lowercased with non-alphanumerics turned into dashes (the same derivation container names use), so `MyProject` becomes `myproject`. You don't have to work this out: **`cww create` prints the three resolved paths** and marks which ones it loaded.
+
+These files live on the host and never in the repo, so they can hold secrets — keep them mode 600. For values you want to share with the team, prefer `environment:` entries in the repo's `.cww/docker-compose.services.yml`, which rides the repo.
+
+Two ordering guarantees are worth knowing. The auth key and git credential are injected *after* all three layers, so nothing you put in a services file can shadow a credential. And the layers are read when the container is created, so **after editing one, `cww teardown <workspace>` then `cww create <workspace>`** to pick it up — a restart won't do it (unlike a rotated token, which `cww start` refreshes). The files themselves survive a teardown; only the workspace goes.
 
 ### Dependency caches (opt-in)
 

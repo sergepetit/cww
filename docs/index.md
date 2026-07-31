@@ -24,6 +24,7 @@ description: Master index of the project's authored documentation
 - [export-skill-plan.md](export-skill-plan.md) — A cww export-skill command that shares one skill from the host's agent config with a project — a symlink into .cww/skills/ for future creates, plus live injection into running workspaces *(done)*
 - [cp-plan.md](cp-plan.md) — A cww cp command that copies files between the host and a running workspace, scp-style (ws:path), resolving the container name and handing pushed files to the in-container developer user *(done)*
 - [copilot-agent-plan.md](copilot-agent-plan.md) — Add GitHub Copilot CLI as a fourth agent, including its BYOK mode so a workspace can run against a third-party OpenAI-compatible endpoint (e.g. a LAN llama.cpp server) *(done)*
+- [services-env-layers-plan.md](services-env-layers-plan.md) — Keep ~/.cww/services.env as the machine-wide pass-through and add two narrower host-side layers above it, so a value can be scoped to one project or one workspace without being committed *(done)*
 
 ## Backlog
 

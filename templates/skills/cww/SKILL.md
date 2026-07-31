@@ -170,6 +170,24 @@ already contains the raw material. What each file is for:
 Generated config is something the host will *run*: present it to the user
 for review rather than committing and pushing it silently.
 
+**Env vars are the one thing that may not belong in `.cww/`.** Values that are
+shareable and not secret can be `environment:` entries in
+`.cww/docker-compose.services.yml`, which you can author here. Anything secret
+or machine-specific belongs in the user's host-side services env instead —
+three layers, narrower overriding broader, none of them visible from inside
+this workspace:
+
+| File (on the host) | Applies to |
+|---|---|
+| `~/.cww/services.env` | every workspace on their machine |
+| `~/.cww/services/<project>.env` | every workspace of this repo |
+| `~/.cww/services/<project>/<workspace>.env` | one workspace |
+
+So when a value you need is a credential, an internal endpoint, or otherwise
+theirs and not the team's, don't write it into the repo — tell them which layer
+to add it to and that `cww create` prints the exact paths. Like the other
+`.cww/` changes, it lands only on `cww teardown NAME && cww create NAME`.
+
 ## How `.cww/` changes take effect
 
 cww reads `.cww/` from the **user's host checkout**, not from this clone —

@@ -35,6 +35,7 @@ import { loadEnvFile } from "../lib/env";
 import { writeTaskEnv } from "../lib/env-refresh";
 import { getCurrentBranch, getGitRoot, isGitRepo } from "../lib/git";
 import { hostsEntries } from "../lib/hosts";
+import { servicesEnvFiles } from "../lib/services-env";
 import { setupRepo } from "../lib/setup";
 import { getProjectConfig, setProjectConfig } from "../lib/user-config";
 import { containerHostname, getContainerName, getTaskDir, normalizeGitUrl } from "../lib/naming";
@@ -132,6 +133,7 @@ interface TaskParams {
   gitAuthorName: string;
   gitAuthorEmail: string;
   projectPath: string;
+  projectName: string;
 }
 
 // Generate docker-compose.yml from the template into the task dir.
@@ -139,6 +141,13 @@ function generateCompose(p: TaskParams): void {
   const template = fs.readFileSync(
     path.join(getCwwDir(), "templates", "docker-compose.yml.template"),
     "utf8",
+  );
+  // The services env layers, least- to most-specific. The global one rides
+  // {{HOME}} in the template; the two narrower ones are rendered here. Each is
+  // an env_file with required: false, so a missing layer is not an error.
+  const [, projectServicesEnv, workspaceServicesEnv] = servicesEnvFiles(
+    p.projectName,
+    p.workspaceName,
   );
   const rendered = renderTemplate(template, {
     TASK_DIR: p.taskDir,
@@ -154,9 +163,23 @@ function generateCompose(p: TaskParams): void {
     // Rides the template since ~/.cww/env no longer reaches the container
     // as an env_file; empty means the in-container default applies.
     CWW_BROWSER_RESOLUTION: process.env.CWW_BROWSER_RESOLUTION || "",
+    PROJECT_SERVICES_ENV: projectServicesEnv!,
+    WORKSPACE_SERVICES_ENV: workspaceServicesEnv!,
     HOME: os.homedir(),
   });
   fs.writeFileSync(path.join(p.taskDir, "docker-compose.yml"), rendered);
+}
+
+// Tell the user where this workspace's services env can live. Names are
+// sanitized (MyProject -> myproject), so printing the resolved paths — the
+// broad one first — is the only reliable way to learn where to write a value.
+// Values are read at container creation, so an edit lands on the next
+// 'cww teardown' + 'cww create'.
+export function reportServicesEnvLayers(projectName: string, workspaceName: string): void {
+  info("Services env (later overrides earlier, applied at create time):");
+  for (const file of servicesEnvFiles(projectName, workspaceName)) {
+    info(`  ${fs.existsSync(file) ? "loaded " : "absent "} ${file}`);
+  }
 }
 
 // Render an optional extra_hosts override for the container's /etc/hosts from
@@ -556,6 +579,7 @@ export async function runCreate(argv: string[]): Promise<void> {
     gitAuthorName,
     gitAuthorEmail,
     projectPath,
+    projectName,
   };
 
   info(`Project: ${projectName}`);
@@ -676,6 +700,7 @@ export async function runCreate(argv: string[]): Promise<void> {
     writeSession(taskDir, { ...readSession(taskDir), agent, auth: method.id });
     writeTaskEnv(taskDir, repoUrl, agentEnvEntries);
     generateCompose(params);
+    reportServicesEnvLayers(projectName, workspaceName);
     generateHostsOverride(taskDir, projectPath);
     generateBrowserOverride(taskDir);
     generateAgentEnvOverride(taskDir, agentEnv);
@@ -711,6 +736,7 @@ export async function runCreate(argv: string[]): Promise<void> {
 
   info("Generating docker-compose configuration...");
   generateCompose(params);
+  reportServicesEnvLayers(projectName, workspaceName);
 
   // Project-specific services ride along into the task dir.
   if (fs.existsSync(projectServices)) {

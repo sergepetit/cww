@@ -32,6 +32,8 @@ describe("compose template placeholders", () => {
       "GIT_AUTHOR_EMAIL",
       "CWW_BROWSER",
       "CWW_BROWSER_RESOLUTION",
+      "PROJECT_SERVICES_ENV",
+      "WORKSPACE_SERVICES_ENV",
       "HOME",
     ];
     for (const p of template.match(/\{\{[A-Z_]+\}\}/g) ?? []) {
@@ -47,6 +49,34 @@ describe("compose template placeholders", () => {
     expect(template).not.toContain("{{HOME}}/.cww/env");
     expect(template).toContain("{{HOME}}/.cww/services.env");
     expect(template).toContain("{{TASK_DIR}}/env");
+  });
+
+  test("env_file entries are ordered least- to most-specific", () => {
+    const template = fs.readFileSync(
+      path.join(getCwwDir(), "templates", "docker-compose.yml.template"),
+      "utf8",
+    );
+    // Compose lets a later env_file win, so this order *is* the precedence
+    // rule: the three services layers widest-first, then the task-dir env so
+    // a services file can never shadow a credential.
+    const paths = [...template.matchAll(/^\s+- path: (.+)$/gm)].map((m) => m[1]);
+    expect(paths).toEqual([
+      "{{HOME}}/.cww/services.env",
+      "{{PROJECT_SERVICES_ENV}}",
+      "{{WORKSPACE_SERVICES_ENV}}",
+      "{{TASK_DIR}}/env",
+    ]);
+  });
+
+  test("every env_file entry is optional", () => {
+    const template = fs.readFileSync(
+      path.join(getCwwDir(), "templates", "docker-compose.yml.template"),
+      "utf8",
+    );
+    // A layer nobody uses must not break 'cww create'.
+    const entries = template.match(/^\s+- path: /gm) ?? [];
+    const optional = template.match(/^\s+required: false$/gm) ?? [];
+    expect(optional).toHaveLength(entries.length);
   });
 });
 

@@ -21,7 +21,7 @@ owner and format:
 | File | What it holds | Format |
 |---|---|---|
 | `~/.cww/env` | Secrets + global defaults (agent tokens, `CWW_AGENT`, `CWW_AUTH`, `CWW_BROWSER`) — host-side only since env scoping | KEY=VALUE, source-style |
-| `~/.cww/services.env` | Pass-through env for the app's services, loaded verbatim into every workspace | KEY=VALUE, compose dotenv |
+| `~/.cww/services.env` + `~/.cww/services/<project>.env` + `~/.cww/services/<project>/<workspace>.env` | Pass-through env for the app's services, loaded verbatim; three layers, narrower overriding broader | KEY=VALUE, compose dotenv |
 | `~/.cww/config.json` | Per-project settings keyed by git-root realpath (`repoUrl`, `remote`, `agent`, `auth`, `browser`) | JSON |
 | `~/.cww/credentials` | Git tokens, one per repo/host | git's `~/.git-credentials` URL format |
 | `~/.cww/hosts` + `<repo>/.cww/hosts` | Container DNS mappings | `hostname ip` lines |

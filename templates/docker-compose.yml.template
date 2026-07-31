@@ -15,14 +15,21 @@ services:
     # generated docker-compose.browser.yml override, not here.
     init: true
     shm_size: "2gb"
-    # Auth env for the container. The task-dir env (written by 'cww create',
-    # user-owned, mode 600) carries exactly two credentials: this repo's git
-    # token from ~/.cww/credentials, and the single key of the workspace's
-    # chosen auth method from ~/.cww/env — never the whole global env file.
-    # The optional services env is the pass-through for anything the app's
-    # own services need; everything in it reaches this container verbatim.
+    # Env for the container, in increasing order of precedence (compose: a
+    # later env_file wins). The three optional services layers — machine-wide,
+    # per-project, per-workspace — are the pass-through for anything the app's
+    # own services need; everything in them reaches this container verbatim.
+    # The task-dir env comes last so a services file can never shadow a
+    # credential: written by 'cww create' (user-owned, mode 600), it carries
+    # exactly two — this repo's git token from ~/.cww/credentials, and the
+    # single key of the workspace's chosen auth method from ~/.cww/env, never
+    # the whole global env file.
     env_file:
       - path: {{HOME}}/.cww/services.env
+        required: false
+      - path: {{PROJECT_SERVICES_ENV}}
+        required: false
+      - path: {{WORKSPACE_SERVICES_ENV}}
         required: false
       - path: {{TASK_DIR}}/env
         required: false
