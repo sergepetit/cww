@@ -22,6 +22,37 @@ if [ -f "$HOME/.cww-env-refresh" ]; then
     set +a
 fi
 
+# Dependency-cache mounts: make the dirs *above* them writable.
+#
+# 'cww cache' chowns the host dir to this container's developer UID, so a mount
+# like ~/.cww/cache/ivy2/cache -> ~/.ivy2/cache is writable. But ~/.ivy2 itself
+# doesn't exist in the image (no sbt is baked in), and Docker creates a bind
+# mount's missing parent dirs as root:root — while we run as 'developer'. The
+# cache then works and everything the toolchain writes *beside* it fails: sbt
+# can't create ~/.ivy2/.sbt.ivy.lock, npm can't write ~/.npm/_logs, and a
+# root-owned ~/.cache breaks every XDG-cache user, not just coursier.
+#
+# So walk our own mount table and chown the root-owned ancestors. Ancestors
+# only: the mount points themselves already carry the host dir's ownership, and
+# recursing would write through to the host over a potentially huge cache.
+# Reading /proc/self/mountinfo rather than a hardcoded list covers the presets,
+# the custom 'cww cache <name> <container-path>' form, and the read-only config
+# mounts (~/.m2/settings.xml, ~/.sbt/repositories, ...) with nothing to keep in
+# sync. Idempotent, so a restart is a no-op.
+fix_mount_parents() {
+    local mp dir
+    while read -r mp; do
+        dir=$(dirname "$mp")
+        while [ "$dir" != "$HOME" ] && [ "$dir" != "/" ]; do
+            if [ "$(stat -c %u "$dir")" = 0 ]; then
+                sudo -n chown "$(id -u):$(id -g)" "$dir" || return 1
+            fi
+            dir=$(dirname "$dir")
+        done
+    done < <(awk -v home="$HOME/" 'index($5, home) == 1 {print $5}' /proc/self/mountinfo)
+}
+fix_mount_parents || echo "[cww] WARNING: could not fix ownership of the home dirs above your mounted caches; a cache may be unwritable." >&2
+
 # Git setup: identity + an env-reading credential helper so the developer's
 # token is used for clone/push but never written to disk (.git/config). Set on
 # every boot (cheap, idempotent) so it survives a container restart.

@@ -369,7 +369,7 @@ Built-in presets (host dir under `~/.cww/cache/` → container path): `npm`, `m2
 cww cache npm                             # provision the npm cache
 cww cache npm --from ~/.npm/_cacache      # ... primed from your existing host cache
 cww cache m2                              # Maven repository cache
-cww cache pip .cache/pip /home/developer/.cache/pip   # a custom cache
+cww cache pip /home/developer/.cache/pip  # a custom cache
 ```
 
 `--from <dir>` optionally warm-starts the cache by copying an existing dir's contents (one-shot).
@@ -754,4 +754,24 @@ Turn the copying off, once, in VS Code:
    ```
 
 For a workspace that's already been clobbered, `cww stop` + `cww start` restores it: the entrypoint rewrites the identity and credential helper on every boot.
+
+### "Permission denied" next to a mounted dependency cache
+
+Signature: the cache itself works, but the toolchain fails writing a file *beside* it — sbt can't create `~/.ivy2/.sbt.ivy.lock`, npm can't write `~/.npm/_logs`, pip can't create its dir under `~/.cache`.
+
+A [mounted cache](#dependency-caches-opt-in) like `~/.ivy2/cache` is writable, because `cww cache` chowns the host dir to the container's `developer` UID. But `~/.ivy2` itself isn't in the image, and Docker creates a bind mount's missing *parent* directories as `root` — while the workspace runs as `developer`. So the cache works and everything written next to it fails. A root-owned `~/.cache` is the widest version of this: it breaks every tool that uses the XDG cache, not just the one you mounted.
+
+The container entrypoint now repairs these parent directories on every boot, so recreating the workspace on a current image fixes it for good:
+
+```bash
+cww build && cww teardown <workspace> && cww create <workspace>
+```
+
+To unblock a workspace you'd rather not recreate, chown the parents in place — the fix persists for the life of the container:
+
+```bash
+cww shell <workspace>
+sudo chown developer:developer ~/.ivy2 ~/.cache ~/.npm   # whichever apply
+```
+
 See [docs/accessing-services.md](accessing-services.md).

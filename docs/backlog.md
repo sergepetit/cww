@@ -13,9 +13,9 @@ Entries move out when done (or into a plan doc if they grow).
 
 ## No `bun` cache preset — bun projects re-download everything, every create
 
-`cww cache` ships `npm`, `m2` and `gradle` presets. Bun installs into
-`~/.bun/install/cache`, which nothing mounts, so it starts empty in every new
-workspace and the whole dependency tree is fetched again.
+`cww cache` ships `npm`, `m2`, `ivy2`, `sbt`, `coursier` and `gradle` presets.
+Bun installs into `~/.bun/install/cache`, which nothing mounts, so it starts
+empty in every new workspace and the whole dependency tree is fetched again.
 
 Measured 2026-07-22 in a freshly created cww-smoketest workspace (a bun-first
 project since `07f793d`):
