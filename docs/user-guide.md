@@ -146,7 +146,22 @@ echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.cww/env   # or OPENAI_API_KEY, OPENROU
 
 Store it with `cww auth pi --method anthropic-api-key` (or by hand as above). A key stored under one method is the only credential a Pi workspace so created ever sees. Pi keeps credentials in a plain `~/.pi/agent/auth.json` (mode 600) rather than an OS keychain, so the injected env var authenticates a fresh container with nothing copied from your host.
 
-Alternatively (`--auth config-file`), point Pi at a **local/alternate provider** — but Pi registers custom providers *programmatically* (`pi.registerProvider()` in an extension — see pi.dev's custom-provider docs), not through a config file cww can inject. So bake your provider extension into the workspace with a [`.cww/Dockerfile`](#customizing-the-workspace-image-cwwdockerfile); `--auth config-file` then injects no key and leaves the provider entirely to your image.
+Alternatively (`--auth config-file`), point Pi at a **local/alternate provider** — e.g. a llama.cpp `llama-server` on your LAN — with no key at all. Put a Pi `models.json` at `~/.cww/pi-models.json` (machine-wide) or `<repo>/.cww/pi-models.json` (per-project, wins over the global file, personal and usually gitignored like the rest of `.cww/`); `cww create --agent pi` validates it host-side — strict JSON, so a typo fails the create loudly with the file and position instead of a silent in-container exit — and copies it into the workspace's `~/.pi/agent/models.json`. Start from [`examples/pi-models.json.example`](../examples/pi-models.json.example):
+
+```json
+{
+  "providers": {
+    "llamacpp": {
+      "baseUrl": "http://llamahost:8080/v1",
+      "apiKey": "noop",
+      "api": "openai-completions",
+      "models": [{ "id": "local", "contextWindow": 262144, "maxTokens": 8192 }]
+    }
+  }
+}
+```
+
+`baseUrl` follows the same networking rules as the opencode/copilot llama.cpp setups above (see [1c](#authentication-setup)): point at a name mapped in `~/.cww/hosts` or the Docker host's LAN IP, never `host.docker.internal`. Local servers ignore auth, but Pi still wants a non-empty `apiKey` (`"noop"`) before the model shows in `/model`. Match `id` and `contextWindow` to what your server serves. (The `models.json` schema is Pi's own — see [pi.dev/docs/latest/models](https://pi.dev/docs/latest/models); cww only checks that the file is valid JSON, not its shape.)
 
 Two things a Pi workspace does **not** have, both because Pi has no [MCP](https://modelcontextprotocol.io) support: the **agent can't drive the in-workspace browser** (the base browser stack and its noVNC view still run for you to watch and take over, but there's no MCP bridge for Pi to use it), and the **built-in `cww` skill isn't injected** (Pi's skills use a different, README-based format — so it also takes no personal `.cww/skills`). Everything else — the clone, services, git, caches — works exactly as for the other agents.
 

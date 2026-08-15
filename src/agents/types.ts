@@ -71,6 +71,21 @@ export interface AgentDefinition<Id extends string = string> {
   // layout mirroring the container's is convention, not contract.
   hostSkillsDir?: string;
 
+  // Optional: a single config FILE to seed into a freshly created container,
+  // for agents that read configuration from a real file rather than an env
+  // var. Pi is the case: it reads ~/.pi/agent/models.json (a custom-provider
+  // definition, e.g. a local llama.cpp endpoint) and has no
+  // OPENCODE_CONFIG_CONTENT-style channel, so containerEnv can't carry it.
+  // Pure resolution — returns the host source and container destination, or
+  // null when none applies (no file present). Validity is enforced earlier in
+  // preflight (pre-create, die on bad JSON); this runs post-create and the
+  // registry owns the copy (copyIntoContainer), so the agent still needs no
+  // container access.
+  configFile?(
+    projectPath: string,
+    env: Record<string, string | undefined>,
+  ): { src: string; dest: string } | null;
+
   // Optional: extra env vars to set on the workspace container at create
   // time, rendered into the generated compose config (an 'environment:'
   // entry overrides the env_file). May die() on invalid user config — it

@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   agentAuthEnvKeys,
   agentAuthMethods,
+  agentConfigFile,
   AGENT_VERSION_FILE,
   agentBuildPlan,
   agentContainerEnv,
@@ -25,6 +26,7 @@ import {
 import { claudeContainerEnv } from "../src/agents/claude/agent";
 import { copilotAgent, copilotContainerEnv } from "../src/agents/copilot/agent";
 import { opencodeAgent, opencodeContainerEnv, resolveOpencodeConfigFile } from "../src/agents/opencode/agent";
+import { piAgent, resolvePiConfigFile } from "../src/agents/pi/agent";
 import { PERSONAL_ASSET_KINDS } from "../src/agents/types";
 
 describe("CWW_AGENTS", () => {
@@ -461,6 +463,106 @@ describe("opencode config file", () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe("pi config file", () => {
+  // Throwaway project and home dirs, optionally carrying a .cww/pi-models.json.
+  function dirWithConfig(config?: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cww-test-"));
+    if (config !== undefined) {
+      fs.mkdirSync(path.join(dir, ".cww"), { recursive: true });
+      fs.writeFileSync(path.join(dir, ".cww", "pi-models.json"), config);
+    }
+    return dir;
+  }
+
+  const CONFIG = `{
+  "providers": { "llamacpp": { "baseUrl": "http://llamahost:8080/v1", "apiKey": "noop", "api": "openai-completions", "models": [{ "id": "local" }] } }
+}`;
+
+  test("the project file beats the global one, then falls back to none", () => {
+    const project = dirWithConfig(CONFIG);
+    const home = dirWithConfig(CONFIG);
+    expect(resolvePiConfigFile(project, home)).toBe(path.join(project, ".cww", "pi-models.json"));
+    expect(resolvePiConfigFile(dirWithConfig(), home)).toBe(
+      path.join(home, ".cww", "pi-models.json"),
+    );
+    expect(resolvePiConfigFile(dirWithConfig(), dirWithConfig())).toBeNull();
+  });
+
+  test("configFile resolves to the container's models.json dest when a file is present", () => {
+    // A project carrying the file is resolved first, regardless of $HOME — so
+    // this stays robust without isolating home (the null path is covered by the
+    // explicit-home resolvePiConfigFile test above).
+    const project = dirWithConfig(CONFIG);
+    expect(piAgent.configFile!(project, {})).toEqual({
+      src: path.join(project, ".cww", "pi-models.json"),
+      dest: "/home/developer/.pi/agent/models.json",
+    });
+  });
+
+  test("the registry dispatch reaches pi's hook, and other agents contribute nothing", () => {
+    const project = dirWithConfig(CONFIG);
+    expect(agentConfigFile("pi", project)?.dest).toBe("/home/developer/.pi/agent/models.json");
+    expect(agentConfigFile("opencode", project)).toBeNull();
+    expect(agentConfigFile("claude", project)).toBeNull();
+  });
+
+  test("preflight of the config-file method accepts a present file (warn-and-continue)", () => {
+    const project = dirWithConfig(CONFIG);
+    const configFileMethod = piAgent.authMethods.find((m) => m.id === "config-file")!;
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(piAgent.preflight(project, {}, configFileMethod)).toBeUndefined();
+      expect(log.mock.calls.flat().join("\n")).toContain(
+        path.join(project, ".cww", "pi-models.json"),
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("preflight ignores a missing file for a provider-key method", () => {
+    const apiKey = piAgent.authMethods.find((m) => m.id === "anthropic-api-key")!;
+    expect(piAgent.preflight(dirWithConfig(), {}, apiKey)).toBeUndefined();
+  });
+
+  test("the config-file method without any file dies, naming both config paths", () => {
+    // process.exit path — probe in a subprocess, like the opencode JSON test.
+    const project = dirWithConfig();
+    const agentMod = path.join(import.meta.dir, "..", "src", "agents", "pi", "agent.ts");
+    const r = Bun.spawnSync({
+      cmd: [
+        "bun",
+        "-e",
+        `const { piAgent } = await import(${JSON.stringify(agentMod)}); piAgent.preflight(${JSON.stringify(project)}, {}, { id: "config-file" })`,
+      ],
+      stderr: "pipe",
+      env: { ...process.env, HOME: project }, // no real ~/.cww/pi-models.json in reach
+    });
+    expect(r.exitCode).toBe(1);
+    const stderr = new TextDecoder().decode(r.stderr);
+    expect(stderr).toContain("pi-models.json");
+    expect(stderr).toContain("anthropic-api-key");
+  });
+
+  test("invalid JSON in a present file dies loudly pre-create, naming the file", () => {
+    const project = dirWithConfig('{"providers": '); // truncated
+    const agentMod = path.join(import.meta.dir, "..", "src", "agents", "pi", "agent.ts");
+    const r = Bun.spawnSync({
+      cmd: [
+        "bun",
+        "-e",
+        `const { piAgent } = await import(${JSON.stringify(agentMod)}); piAgent.preflight(${JSON.stringify(project)}, {}, { id: "anthropic-api-key" })`,
+      ],
+      stderr: "pipe",
+      env: { ...process.env, HOME: project },
+    });
+    expect(r.exitCode).toBe(1);
+    const stderr = new TextDecoder().decode(r.stderr);
+    expect(stderr).toContain("Invalid JSON");
+    expect(stderr).toContain(path.join(project, ".cww", "pi-models.json"));
   });
 });
 

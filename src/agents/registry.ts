@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { skillEnabled } from "../lib/config";
-import { copyDirIntoContainer } from "../lib/container-fs";
+import { copyDirIntoContainer, copyIntoContainer } from "../lib/container-fs";
 import { readSession, type Session } from "../lib/session";
 import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
@@ -135,6 +135,18 @@ export function agentContainerEnv(
   method?: AgentAuthMethod,
 ): Record<string, string> {
   return byId.get(agent)?.containerEnv?.(projectPath, env, method) ?? {};
+}
+
+// The config file (host source + container destination) the agent wants
+// seeded into a freshly created container, or null when it declares none or
+// none is present. The registry copies it in materializeCwwAssets; the agent's
+// hook is pure resolution (validity is enforced in preflight, pre-create).
+export function agentConfigFile(
+  agent: Agent,
+  projectPath: string,
+  env: Record<string, string | undefined> = process.env,
+): { src: string; dest: string } | null {
+  return byId.get(agent)?.configFile?.(projectPath, env) ?? null;
 }
 
 // Where the given agent keeps personal skills on the HOST ("~" expanded
@@ -332,6 +344,19 @@ export async function materializeCwwAssets(
 ): Promise<void> {
   const skill = builtinSkillPlan(agent);
   if (skill) await applyBuiltinSkill(container, skill);
+  // An agent config file (e.g. Pi's models.json) — validated in preflight
+  // pre-create, so here it is a straight copy into the container. This lands
+  // AFTER the agent has already launched (the entrypoint starts it at boot,
+  // and the caller waited for its tmux session); Pi re-reads models.json when
+  // you open /model, so the first session picks it up there, and every later
+  // start finds it already in place. See docs/pi-agent-plan.md, Phase 3.
+  const cfg = agentConfigFile(agent, projectPath);
+  if (cfg) {
+    await copyIntoContainer([cfg.src], container, cfg.dest);
+    info(
+      `Loaded ${agentLabel(agent)} config into the workspace (${cfg.dest.replace("/home/developer", "~")})`,
+    );
+  }
   const { copies, skipped } = personalAssetPlan(projectPath, agent);
   for (const { kind, src, dest } of copies) {
     if (await copyDirIntoContainer(src, container, dest)) {

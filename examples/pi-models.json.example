@@ -1,0 +1,17 @@
+{
+  "providers": {
+    "llamacpp": {
+      "baseUrl": "http://llamahost:8080/v1",
+      "apiKey": "noop",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "local",
+          "name": "llama.cpp (local)",
+          "contextWindow": 262144,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}

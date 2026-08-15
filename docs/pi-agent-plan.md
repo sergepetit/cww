@@ -2,13 +2,20 @@
 type: plan
 title: Pi Coding Agent Plan
 description: Add Pi (pi.dev) as a fifth agent — a provider-agnostic Node CLI that maps almost 1:1 onto the OpenCode agent, minus the in-workspace browser (Pi has no MCP)
-status: proposed
+status: active
 created: 2026-08-15
 timestamp: 2026-08-15
 tags: [agents, pi]
 ---
 
 # Pi Coding Agent Plan
+
+**Status 2026-08-15:** Phases 1, 2 and 4 written and unit-tested on branch
+`pi-agent` (agent module, docs, and the `config-file` models.json injection for
+a local/alternate provider). Phase 3 — host-side build-and-run verification —
+is still open: this dev workspace has no docker socket, so nothing here has run
+against a real Pi image yet. The items marked **(confirm host-side)** below are
+what Phase 3 must settle.
 
 ## Context
 
@@ -101,15 +108,21 @@ source.
   forwards `OPENCODE_CONFIG_CONTENT`), Pi reads the provider key directly from
   the env cww already injects for the chosen method — so the provider-key
   methods need **zero** injection code. This is the simplest possible agent.
-- **`config-file` ships in v1 as a keyless escape hatch, not a wired feature.**
-  Pi registers a custom/local provider *programmatically* —
-  `pi.registerProvider()` in an extension (pi.dev's custom-provider docs), not a
-  static file cww could parse and inject. So the `config-file` method injects no
-  key and its preflight just *warns* (not dies), pointing the user at baking
-  their own provider extension via a [`.cww/Dockerfile`](user-guide.md) — a path
-  that needs zero cww code because it bakes into the image layer. Phase 4
-  revisits a host-side convenience once the exact static-config story (a
-  `~/.pi/agent/models.json`? an extensions dir?) is pinned host-side.
+- **`config-file` injects a validated `models.json` (Phase 4, implemented).**
+  Pi reads a static `~/.pi/agent/models.json` to register a custom/local
+  provider (llama.cpp, LM Studio, …) — confirmed against Pi's own models docs
+  and the HuggingFace local-agents guide. Because Pi reads a *file*, not an env
+  var, this can't ride `containerEnv` the way opencode's `OPENCODE_CONFIG_CONTENT`
+  does; it needs a new declarative hook. So `AgentDefinition` gains an optional
+  `configFile(projectPath, env)` returning `{ src, dest } | null`, resolved from
+  `<repo>/.cww/pi-models.json` (project) over `~/.cww/pi-models.json` (global) —
+  the same precedence as opencode's config file. `preflight` validates it
+  pre-create (strict JSON, die on error, like opencode) and requires one for the
+  keyless `config-file` method; the registry copies the validated file into the
+  container in `materializeCwwAssets` via `copyIntoContainer`, keeping all
+  docker-cp out of the agent module. (A `registerProvider()` extension remains
+  Pi's escape hatch for providers a static file can't express — bake it with a
+  `.cww/Dockerfile`; nothing cww-side needed.)
 - **No browser in v1 (Pi has no MCP).** No `mcp-config`, no `browser-hook.sh`,
   no `chrome-devtools-mcp` in the Dockerfile. `CWW_BROWSER` still governs the
   base-image browser stack; Pi simply doesn't attach to it. Documented as the
@@ -139,10 +152,17 @@ and config-injection pieces):
     pinned in Phase 3) + a keyless `config-file` method;
   - `personalAssets: {}` for v1 (revisit in Phase 3);
   - **no** `containerEnv` (provider keys ride the method's own env channel);
-  - `preflight`: for `config-file`, *warn* (not die) that no key is injected and
-    the provider is the user's to configure — point at baking a
-    `pi.registerProvider()` extension via a `.cww/Dockerfile`, or at picking a
-    provider-key method. No host-side file to validate in v1.
+  - `configFile(projectPath)` — resolves `.cww/pi-models.json` (project over
+    global) and returns `{ src, dest: ~/.pi/agent/models.json }` for the
+    registry to copy (Phase 4);
+  - `preflight`: validate a present `models.json` pre-create (strict JSON, die
+    on error) for any method, and for the keyless `config-file` method require
+    one, dying with the two config paths and the provider-key alternative when
+    absent (opencode's config-file preflight, adapted).
+- `src/agents/types.ts` + `registry.ts` — add the optional `configFile` hook to
+  `AgentDefinition` and an `agentConfigFile` dispatch; `materializeCwwAssets`
+  copies the resolved file via `copyIntoContainer` (docker-cp stays in the
+  registry, not the agent module).
 - `Dockerfile` — `FROM cww-base:latest`;
   `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`; version
   stamp; disable self-update (flag TBD Phase 3); `ENV CWW_IMAGE_AGENT=pi`;
@@ -154,8 +174,10 @@ and config-injection pieces):
   Pi section noting it shares the provider-key vars with opencode.
 
 Tests (`tests/agents.test.ts`): agent order/labels/images, the known-methods
-table, `allAuthEnvKeys` union, and a `personalAssets` case asserting Pi maps no
-skills dir (built-in skill skipped) — all pure-data, no Docker, as today.
+table, `allAuthEnvKeys` union, a `personalAssets` case asserting Pi maps no
+skills dir (built-in skill skipped), and a `pi config file` block covering
+resolution precedence, the `agentConfigFile` dispatch, and the preflight
+die/validate paths — all pure-data, no Docker, as today.
 
 ## Phase 2 — User docs
 
@@ -192,24 +214,39 @@ scratch repo, teardown after — see the `verify` skill). Resolves every
    the `personalAssets.skills` mapping + `hostSkillsDir` and re-verify the
    built-in cww skill loads; if no, confirm the v1 "no skills" behavior and
    leave `personalAssets: {}`, and note it in the docs.
-6. **Teardown:** no stray `cww-repo-*` containers or `repo-*` networks; the
+6. **config-file path:** with a `~/.cww/pi-models.json` pointing at a stub
+   OpenAI-compatible server (then the LAN llama.cpp host), `--auth config-file`
+   lands the file at `~/.pi/agent/models.json` and Pi drives a real tool-using
+   turn against it; a broken JSON file fails the create pre-container. Confirm
+   Pi's actual `models.json` schema against pi.dev/docs/latest/models (cww only
+   checks it is valid JSON), and whether the model needs selecting via `/model`
+   each session or can be defaulted.
+7. **Teardown:** no stray `cww-repo-*` containers or `repo-*` networks; the
    developer's own workspaces untouched.
 
-## Phase 4 — Host-side convenience for a custom provider — fast-follow
+## Phase 4 — `config-file` models.json injection for a custom provider
 
-**Status: not started**
+**Status: written, unit-tested; host-run pending (folded into Phase 3, step 6)**
 
-v1 already lets a user run Pi against a local/alternate provider by baking a
-`pi.registerProvider()` extension via a `.cww/Dockerfile` (`--auth config-file`,
-no cww code). Phase 4 asks whether cww should make that easier, once Pi's
-static-config story is confirmed host-side (Phase 3):
+First-class local/alternate-provider support, so a llama.cpp endpoint needs one
+`cww create` rather than a hand-rolled `.cww/Dockerfile`:
 
-- If Pi reads a static provider file (e.g. `~/.pi/agent/models.json`), add
-  host-side injection of a personal `~/.cww/pi/…` (project beats machine-wide,
-  mirroring the opencode config-file precedence) via the registry's docker-cp
-  plumbing, plus a validating preflight and an example file.
-- If custom providers stay extension-only, document the `.cww/Dockerfile`
-  recipe as the supported path and leave `config-file` as the keyless
-  escape hatch it already is.
-- Either way, verify against a stub OpenAI-compatible server and, if available,
-  the LAN llama.cpp host — same procedure as the copilot BYOK verification.
+- **`configFile` hook** on `AgentDefinition` (`src/agents/types.ts`), dispatched
+  by `agentConfigFile` and applied in `materializeCwwAssets` via
+  `copyIntoContainer` — Pi reads a *file* (`~/.pi/agent/models.json`), not an
+  env var, so this is the file-analogue of opencode's `containerEnv`
+  `OPENCODE_CONFIG_CONTENT`. The hook is pure resolution; the registry owns the
+  docker-cp, so the agent module still imports no docker.
+- **Resolution + validation** in `pi/agent.ts`: `resolvePiConfigFile` picks
+  `<repo>/.cww/pi-models.json` over `~/.cww/pi-models.json`; `readPiConfig`
+  parses it (strict JSON, die with file + position); `preflight` validates any
+  present file pre-create and requires one for the keyless `config-file` method.
+- **Docs + example:** `examples/pi-models.json.example` (a llama.cpp provider
+  block), the user-guide 1e config-file paragraph, the env-example Pi section,
+  and the README local-endpoint list.
+- **Escape hatch retained:** a `pi.registerProvider()` extension baked via a
+  `.cww/Dockerfile` still covers providers a static `models.json` can't express;
+  nothing cww-side needed for it.
+
+Still to do host-side (Phase 3, step 6): confirm Pi's real `models.json` schema
+and that it drives a turn against the stub then the LAN llama.cpp host.
