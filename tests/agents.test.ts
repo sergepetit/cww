@@ -29,7 +29,7 @@ import { PERSONAL_ASSET_KINDS } from "../src/agents/types";
 
 describe("CWW_AGENTS", () => {
   test("lists the registered agents in registration order", () => {
-    expect([...CWW_AGENTS]).toEqual(["claude", "vibe", "opencode", "copilot"]);
+    expect([...CWW_AGENTS]).toEqual(["claude", "vibe", "opencode", "copilot", "pi"]);
   });
 });
 
@@ -72,6 +72,7 @@ describe("agentLabel / agentImage", () => {
     expect(agentLabel("vibe")).toBe("Mistral Vibe");
     expect(agentLabel("opencode")).toBe("OpenCode");
     expect(agentLabel("copilot")).toBe("GitHub Copilot");
+    expect(agentLabel("pi")).toBe("Pi");
   });
 
   test("an unknown agent falls back to its own name", () => {
@@ -83,6 +84,7 @@ describe("agentLabel / agentImage", () => {
     expect(agentImage("vibe")).toBe("coder-workspace-workflow:vibe");
     expect(agentImage("opencode")).toBe("coder-workspace-workflow:opencode");
     expect(agentImage("copilot")).toBe("coder-workspace-workflow:copilot");
+    expect(agentImage("pi")).toBe("coder-workspace-workflow:pi");
   });
 });
 
@@ -127,6 +129,12 @@ describe("authMethods", () => {
       ["github-token", "COPILOT_GITHUB_TOKEN"],
       ["provider", undefined],
       ["provider-key", "COPILOT_PROVIDER_API_KEY"],
+    ]);
+    expect(agentAuthMethods("pi").map((m) => [m.id, m.envKey])).toEqual([
+      ["anthropic-api-key", "ANTHROPIC_API_KEY"],
+      ["openai-api-key", "OPENAI_API_KEY"],
+      ["openrouter-api-key", "OPENROUTER_API_KEY"],
+      ["config-file", undefined],
     ]);
   });
 
@@ -204,6 +212,16 @@ describe("personalAssetPlan", () => {
     });
   });
 
+  test("pi maps no personal assets — the whole triad is skipped", () => {
+    // Pi opts out of the mechanism entirely (personalAssets: {}), pending the
+    // Phase-3 check of whether it reads Agent Skills SKILL.md.
+    const dir = projectWith("skills", "commands", "agents");
+    expect(personalAssetPlan(dir, "pi")).toEqual({
+      copies: [],
+      skipped: ["skills", "commands", "agents"],
+    });
+  });
+
   test("a skills-only project skips nothing for vibe", () => {
     const dir = projectWith("skills");
     const plan = personalAssetPlan(dir, "vibe");
@@ -241,9 +259,16 @@ describe("builtinSkillPlan", () => {
   test("the source is the install's templates/skills/cww, carrying SKILL.md", () => {
     for (const agent of CWW_AGENTS) {
       const plan = builtinSkillPlan(agent, {});
-      expect(plan?.src).toBe(path.join(getCwwDir(), "templates", "skills", "cww"));
-      expect(fs.existsSync(path.join(plan!.src, "SKILL.md"))).toBe(true);
+      if (!plan) continue; // an agent that maps no skills dir (e.g. pi) opts out
+      expect(plan.src).toBe(path.join(getCwwDir(), "templates", "skills", "cww"));
+      expect(fs.existsSync(path.join(plan.src, "SKILL.md"))).toBe(true);
     }
+  });
+
+  test("an agent that maps no skills dir opts out of the built-in skill", () => {
+    // pi's "Skills" are a different format, so it maps none — the plan is null
+    // and the registry skips the built-in cww skill for it (Phase 3 revisits).
+    expect(builtinSkillPlan("pi", {})).toBeNull();
   });
 
   test("references resolve to existing docs in the install (none missing here)", () => {
@@ -258,7 +283,8 @@ describe("builtinSkillPlan", () => {
 
   test("each agent gets only its own troubleshooting doc, or none", () => {
     for (const agent of CWW_AGENTS) {
-      const plan = builtinSkillPlan(agent, {})!;
+      const plan = builtinSkillPlan(agent, {});
+      if (!plan) continue; // no skill at all (e.g. pi) ⇒ no troubleshooting doc
       const expected = path.join(getCwwDir(), "templates", "agent-troubleshooting", `${agent}.md`);
       // Present or absent, it is never another agent's file.
       expect(plan.troubleshooting).toBe(fs.existsSync(expected) ? expected : null);

@@ -50,9 +50,14 @@ describe("agentHostSkillsDir", () => {
     expect(agentHostSkillsDir("opencode", "/h")).toBe("/h/.config/opencode/skills");
   });
 
-  test("every registered agent declares a host skills dir", () => {
+  test("skills-supporting agents declare a host dir; a skill-less agent declares none", () => {
+    // Most agents keep personal skills on the host, so export-skill can find
+    // them. Pi supports no Agent Skills format yet, so it declares no dir and
+    // agentHostSkillsDir is null — export-skill handles that (nothing to
+    // search) rather than assuming every agent opts in.
     for (const agent of CWW_AGENTS) {
-      expect(agentHostSkillsDir(agent, "/h")).toBeTruthy();
+      const dir = agentHostSkillsDir(agent, "/h");
+      expect(agent === "pi" ? dir === null : dir !== null).toBe(true);
     }
   });
 });

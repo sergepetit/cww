@@ -36,6 +36,7 @@ Store or renew a credential:
   cww auth opencode        OpenCode provider key (pick which, or use --method)
   cww auth copilot         Copilot GitHub token (fine-grained PAT / gho_ token),
                            or a BYOK endpoint key via --method provider-key
+  cww auth pi              Pi provider key (pick which, or use --method)
   cww auth git             This repo's git credential — same flow as 'cww init',
                            validated with 'git ls-remote' before it is stored
   cww auth KEY=VALUE       Non-interactive: upsert one line into ~/.cww/env

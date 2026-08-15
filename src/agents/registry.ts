@@ -16,6 +16,7 @@ import { confirm, die, info, success, warn } from "../lib/ui";
 import { claudeAgent } from "./claude/agent";
 import { copilotAgent } from "./copilot/agent";
 import { opencodeAgent } from "./opencode/agent";
+import { piAgent } from "./pi/agent";
 import { vibeAgent } from "./vibe/agent";
 import {
   PERSONAL_ASSET_KINDS,
@@ -25,7 +26,7 @@ import {
 } from "./types";
 
 // The single registration point.
-const AGENTS = [claudeAgent, vibeAgent, opencodeAgent, copilotAgent] as const;
+const AGENTS = [claudeAgent, vibeAgent, opencodeAgent, copilotAgent, piAgent] as const;
 
 export type Agent = (typeof AGENTS)[number]["id"];
 export const CWW_AGENTS: readonly Agent[] = AGENTS.map((a) => a.id);

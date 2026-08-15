@@ -27,8 +27,8 @@ const USAGE = `cww - Coder Workspace Workflow (pronounced céwéwé, /se.ve.ve/)
 
 Create isolated, disposable workspaces — each its own container that clones your
 repo and runs the app's services via Docker, with a coding agent inside (Claude
-Code, Mistral Vibe, OpenCode, or GitHub Copilot). The workspace is the unit; cww
-is git-flow agnostic — the git workflow inside is yours.
+Code, Mistral Vibe, OpenCode, GitHub Copilot, or Pi). The workspace is the unit;
+cww is git-flow agnostic — the git workflow inside is yours.
 
 Usage: cww <command> [arguments]
 
@@ -50,7 +50,7 @@ Commands:
   tunnel-command [name]   Print the ssh command to reach a workspace's ports
   cache <preset|name>     Provision a shared dependency-cache dir (npm, m2, …)
   build [agent|all]       Build/rebuild a per-agent Docker image (claude | vibe |
-                          opencode | copilot) with the current agent CLI
+                          opencode | copilot | pi) with the current agent CLI
   help                    Show this help message
 
 Run 'cww <command> --help' for more information on a command.

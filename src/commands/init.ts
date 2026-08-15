@@ -46,7 +46,7 @@ Arguments:
 
 Options:
   --remote <name>   Git remote to derive the clone URL from (default: origin)
-  --agent <name>    Agent to preflight: claude | vibe | opencode | copilot — also
+  --agent <name>    Agent to preflight: claude | vibe | opencode | copilot | pi — also
                     recorded as this project's default agent
                     (otherwise: CWW_AGENT from ~/.cww/env, falling back to claude)
   -h, --help        Show this help message
