@@ -11,11 +11,16 @@ tags: [agents, pi]
 # Pi Coding Agent Plan
 
 **Status 2026-08-15:** Phases 1, 2 and 4 written and unit-tested on branch
-`pi-agent` (agent module, docs, and the `config-file` models.json injection for
-a local/alternate provider). Phase 3 — host-side build-and-run verification —
-is still open: this dev workspace has no docker socket, so nothing here has run
-against a real Pi image yet. The items marked **(confirm host-side)** below are
-what Phase 3 must settle.
+`pi-agent`. The **config-file / local-provider path is host-verified**: Pi built
+and ran against a real LAN llama.cpp server (`llamahost`) — `cww create --agent pi
+--auth config-file` landed straight on the Pi prompt (no first-run trust dialog,
+so `pi --approve` is the right and complete `CWW_AGENT_CMD`), the injected
+`~/.pi/agent/models.json` showed up under `/model` with no restart (the
+post-boot copy race is benign — `/model` re-reads it), `cww list --versions`
+reports Pi's version (the image stamp works), and the session ran with no rough
+edges. Still unverified: the hosted **provider-key** run, **self-update**
+suppression, and the **skills** format (Phase 3, steps 3–5) — why this stays
+`active` rather than `done`.
 
 ## Context
 
@@ -192,37 +197,39 @@ die/validate paths — all pure-data, no Docker, as today.
 
 ## Phase 3 — Host-side end-to-end verification
 
-**Status: not started**
+**Status: partly done — the config-file/local-provider path verified against
+`llamahost` (2026-08-15); provider-key, version stamp, self-update and skills open**
 
 Run per the repo's verify procedure (isolated HOME, real docker daemon,
-scratch repo, teardown after — see the `verify` skill). Resolves every
-**(confirm host-side)** unknown above:
+scratch repo, teardown after — see the `verify` skill).
 
-1. **Images:** `cww build pi` builds base + agent; the image carries
-   `CWW_IMAGE_AGENT=pi` and a real `agent-version`; `cww build all` + a version
-   smoke test of the other four agents shows no regression.
-2. **Interactive auto-approve:** confirm the flag that makes `pi` run in tmux
-   with no per-tool permission prompt, and whether a first-run trust/onboarding
-   dialog fires that the flag doesn't cover (bake the fix into the image config
-   if so — the copilot `trustedFolders` lesson). Update `CWW_AGENT_CMD`.
-3. **Provider-key path:** with `--auth anthropic-api-key` (or another provider),
-   the container sees exactly that one key, Pi reaches the prompt, and a real
-   tool-using turn runs. Confirm the pinned provider-key set against
+1. **Images — done.** `cww build pi` built base + agent, the image ran, and
+   `cww list --versions` reports Pi's version (so the `agent-version` stamp and
+   `CWW_IMAGE_AGENT=pi` marker work). Still nice-to-check: `cww build all` with
+   no regression to the other four agents.
+2. **Interactive launch — done.** `cww create --agent pi --auth config-file`
+   landed straight on the Pi prompt with no per-tool prompt and **no first-run
+   trust/onboarding dialog** — so `pi --approve` is correct and complete, and
+   no image-side trust config is needed (unlike copilot's `trustedFolders`).
+3. **Provider-key path — open.** With `--auth anthropic-api-key` (or another),
+   confirm the container sees exactly that one key, Pi reaches the prompt, and a
+   real tool-using turn runs. Pin the provider-key set against
    `packages/ai/src/env-api-keys.ts`.
-4. **Self-update:** confirm it's disabled in the image.
-5. **Skills:** determine whether Pi reads Agent Skills `SKILL.md`. If yes, add
-   the `personalAssets.skills` mapping + `hostSkillsDir` and re-verify the
-   built-in cww skill loads; if no, confirm the v1 "no skills" behavior and
-   leave `personalAssets: {}`, and note it in the docs.
-6. **config-file path:** with a `~/.cww/pi-models.json` pointing at a stub
-   OpenAI-compatible server (then the LAN llama.cpp host), `--auth config-file`
-   lands the file at `~/.pi/agent/models.json` and Pi drives a real tool-using
-   turn against it; a broken JSON file fails the create pre-container. Confirm
-   Pi's actual `models.json` schema against pi.dev/docs/latest/models (cww only
-   checks it is valid JSON), and whether the model needs selecting via `/model`
-   each session or can be defaulted.
-7. **Teardown:** no stray `cww-repo-*` containers or `repo-*` networks; the
-   developer's own workspaces untouched.
+4. **Self-update — open.** Confirm whether Pi self-updates and, if so, disable
+   it in the image (env or flag).
+5. **Skills — open.** Determine whether Pi reads Agent Skills `SKILL.md`. If
+   yes, add the `personalAssets.skills` mapping + `hostSkillsDir` and re-verify
+   the built-in cww skill loads; if no, confirm the v1 "no skills" behavior.
+6. **config-file path — done.** `~/.cww/pi-models.json` pointing at the LAN
+   llama.cpp host (`llamahost`) was injected to `~/.pi/agent/models.json` and showed
+   up under `/model` **with no restart** — the post-boot copy timing is benign
+   (Pi re-reads `models.json` on `/model`), so no restart-after-copy fix is
+   needed. The `{ "providers": { … "api": "openai-completions" … } }` shape from
+   `examples/pi-models.json.example` was accepted. Still to spot-check: that a
+   deliberately broken JSON file fails the create pre-container (the preflight
+   path unit tests cover, host run not yet repeated).
+7. **Teardown — open.** No stray `cww-repo-*` containers or `repo-*` networks;
+   the developer's own workspaces untouched.
 
 ## Phase 4 — `config-file` models.json injection for a custom provider
 
