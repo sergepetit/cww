@@ -7,7 +7,6 @@
 import { $ } from "bun";
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
 import {
   agentAuthMethods,
   agentImage,
@@ -25,6 +24,7 @@ import { setupRepo } from "../lib/setup";
 import { getProjectConfig, setProjectConfig } from "../lib/user-config";
 import { projectImagePlan } from "../lib/project-image";
 import { GREEN, RED, NC, die, error, info, success, warn } from "../lib/ui";
+import { parseCommandArgs } from "./common";
 
 const USAGE = `Usage: cww init [project-path] [options]
 
@@ -82,30 +82,15 @@ function preflightPasses(
 }
 
 export async function runInit(argv: string[]): Promise<void> {
-  let positionals: string[];
-  let remoteArg: string | undefined;
-  let agentArg: string | undefined;
-  try {
-    const parsed = parseArgs({
-      args: argv,
-      options: {
-        help: { type: "boolean", short: "h", default: false },
-        remote: { type: "string" },
-        agent: { type: "string" },
-      },
-      allowPositionals: true,
-    });
-    if (parsed.values.help) {
-      console.log(USAGE);
-      return;
-    }
-    remoteArg = parsed.values.remote;
-    agentArg = parsed.values.agent;
-    if (agentArg) validateAgent(agentArg);
-    positionals = parsed.positionals;
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE, {
+    remote: { type: "string" },
+    agent: { type: "string" },
+  });
+  if (!args) return;
+  const remoteArg = args.values.remote;
+  const agentArg = args.values.agent;
+  if (agentArg) validateAgent(agentArg);
+  const positionals = args.positionals;
 
   let projectPath = resolveProjectPath(positionals[0]);
   if (!(await isGitRepo(projectPath))) die(`Not a git repository: ${projectPath}`);

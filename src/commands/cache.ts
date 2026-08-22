@@ -23,9 +23,9 @@ import { $ } from "bun";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
-import { provisionCacheDir } from "../lib/docker";
+import { provisionCacheDir } from "../lib/cache-dir";
 import { die, info, success, warn } from "../lib/ui";
+import { parseCommandArgs } from "./common";
 
 // Well-known presets: <key> -> "<host-subdir>:<container-path>".
 // The container paths match the cache locations the bundled toolchains use.
@@ -69,26 +69,10 @@ Examples:
 `;
 
 export async function runCache(argv: string[]): Promise<void> {
-  let from = "";
-  let positionals: string[] = [];
-  try {
-    const parsed = parseArgs({
-      args: argv,
-      options: {
-        from: { type: "string" },
-        help: { type: "boolean", short: "h", default: false },
-      },
-      allowPositionals: true,
-    });
-    if (parsed.values.help) {
-      console.log(USAGE);
-      return;
-    }
-    from = parsed.values.from ?? "";
-    positionals = parsed.positionals;
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE, { from: { type: "string" } });
+  if (!args) return;
+  const from = args.values.from ?? "";
+  const positionals = args.positionals;
 
   if (positionals.length < 1) {
     console.log(USAGE);

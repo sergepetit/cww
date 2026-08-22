@@ -8,7 +8,6 @@
 // value up when (stopped: next start, via the start-time secret refresh;
 // running: after a stop + start, the agent process must relaunch).
 
-import { parseArgs } from "node:util";
 import {
   CWW_AGENTS,
   agentAuthMethods,
@@ -27,6 +26,7 @@ import { resolveProjectPath } from "../lib/paths";
 import { findAllSessions, readSessionFile, type Session } from "../lib/session";
 import { setupRepo } from "../lib/setup";
 import { die, info, promptChoice, warn } from "../lib/ui";
+import { parseCommandArgs } from "./common";
 
 const USAGE = `Usage: cww auth [<agent>|git|KEY=VALUE] [options]
 
@@ -188,27 +188,11 @@ async function authAgent(agent: Agent, methodArg?: string): Promise<void> {
 // --- Command -------------------------------------------------------------------
 
 export async function runAuth(argv: string[]): Promise<void> {
-  let target: string | undefined;
-  let methodArg: string | undefined;
-  try {
-    const parsed = parseArgs({
-      args: argv,
-      options: {
-        help: { type: "boolean", short: "h", default: false },
-        method: { type: "string" },
-      },
-      allowPositionals: true,
-    });
-    if (parsed.values.help) {
-      console.log(USAGE);
-      return;
-    }
-    methodArg = parsed.values.method;
-    if (parsed.positionals.length > 1) die(`Unexpected argument: ${parsed.positionals[1]}`);
-    target = parsed.positionals[0];
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE, { method: { type: "string" } });
+  if (!args) return;
+  const methodArg = args.values.method;
+  if (args.positionals.length > 1) die(`Unexpected argument: ${args.positionals[1]}`);
+  const target = args.positionals[0];
 
   // Agent tokens live in the global env; load it so CWW_AGENT resolves and
   // the stored defaults are visible to the flows below.

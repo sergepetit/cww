@@ -16,7 +16,7 @@ import {
   saveCredentials,
   upsertCredential,
 } from "./credentials";
-import { findAnyCwwImage } from "./docker";
+import { findAnyCwwImage } from "./cache-dir";
 import { appendGlobalHost, globalHostsFile, hostsEntries } from "./hosts";
 import { normalizeGitUrl } from "./naming";
 import { getProjectConfig, setProjectConfig } from "./user-config";

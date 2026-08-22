@@ -170,7 +170,7 @@ so upgrading cww fixes new workspaces and nothing else. With the skill now
 carrying operational procedures (browser recovery, agent troubleshooting), a
 month-old workspace is exactly where the fix is most wanted.
 
-The re-sync rides `startTaskStack` (`src/lib/docker.ts`) — the one seam every
+The re-sync rides `startTaskStack` (`src/lib/workspace.ts`) — the one seam every
 resume path funnels through (`cww start`, `cww attach`, `cww shell`, and
 create's start-a-stopped-one branch), already the home of the secret refresh.
 `refreshWorkspaceSkill` reads the workspace's session for its agent, then

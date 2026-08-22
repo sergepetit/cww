@@ -9,7 +9,6 @@ import { $ } from "bun";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
 import {
   agentContainerSkillsDir,
   agentHostSkillsDir,
@@ -24,6 +23,7 @@ import { getGitRoot } from "../lib/git";
 import { findRepoWorkspaces, resolveWorkspace, type WorkspaceRef } from "../lib/session";
 import { skillEntryPlan, tilde, writeSkillEntry, type SkillEntryPlan } from "../lib/skill-link";
 import { die, error, info, success, warn } from "../lib/ui";
+import { parseCommandArgs } from "./common";
 
 const USAGE = `Usage: cww export-skill [skill-name] [workspace-name] [options]
 
@@ -205,33 +205,19 @@ async function applyLinkPlan(projectPath: string, skill: HostSkill, copy: boolea
 }
 
 export async function runExportSkill(argv: string[]): Promise<void> {
-  let name: string | undefined;
-  let wsName: string | undefined;
+  const args = parseCommandArgs(argv, USAGE, {
+    from: { type: "string" },
+    copy: { type: "boolean", default: false },
+  });
+  if (!args) return;
   let from: Agent | undefined;
-  let copy = false;
-  try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      options: {
-        from: { type: "string" },
-        copy: { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
-      },
-      allowPositionals: true,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    if (values.from) {
-      validateAgent(values.from);
-      from = values.from;
-    }
-    copy = values.copy ?? false;
-    [name, wsName] = positionals;
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
+  const fromArg = args.values.from;
+  if (fromArg) {
+    validateAgent(fromArg);
+    from = fromArg;
   }
+  const copy = args.values.copy;
+  const [name, wsName] = args.positionals;
 
   if (!name) {
     printSkillList(from);

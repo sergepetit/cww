@@ -2,10 +2,9 @@
 
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
 import { buildAgentImage, CWW_AGENTS, validateAgent } from "../agents/registry";
 import { loadEnvFile } from "../lib/env";
-import { die } from "../lib/ui";
+import { parseCommandArgs } from "./common";
 
 const USAGE = `Usage: cww build [agent|all] [options]
 
@@ -26,26 +25,10 @@ Agents: ${CWW_AGENTS.join(", ")}
 `;
 
 export async function runBuild(argv: string[]): Promise<void> {
-  let cached = false;
-  let target = "";
-  try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      options: {
-        cached: { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
-      },
-      allowPositionals: true,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    cached = values.cached;
-    target = positionals[0] ?? "";
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE, { cached: { type: "boolean", default: false } });
+  if (!args) return;
+  const cached = args.values.cached;
+  const target = args.positionals[0] ?? "";
 
   // No argument -> the configured default agent (CWW_AGENT in ~/.cww/env),
   // falling back to claude.

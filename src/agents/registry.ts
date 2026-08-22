@@ -301,12 +301,12 @@ export function skillRefreshPlan(session: Session): BuiltinSkillPlan | null {
 }
 
 // Re-load the built-in cww skill into a workspace that already exists, on
-// every start (see startTaskStack). The skill and its references/ come from
-// the cww install, so without this a workspace keeps the copy that was
-// current the day it was created and upgrading cww would only ever fix new
-// workspaces. Unlike the agent CLI — frozen in the image for a container's
-// whole life (docs/agent-cli-updates.md) — this is a few files a docker cp
-// away, so a start is the cheap moment to re-sync them.
+// every start (see startTaskStack in src/lib/workspace.ts). The skill and its
+// references/ come from the cww install, so without this a workspace keeps the
+// copy that was current the day it was created and upgrading cww would only
+// ever fix new workspaces. Unlike the agent CLI — frozen in the image for a
+// container's whole life (docs/agent-cli-updates.md) — this is a few files a
+// docker cp away, so a start is the cheap moment to re-sync them.
 //
 // Only the skill's CONTENT is refreshed, never the decision to have one: a
 // workspace created with CWW_SKILL=off has no skill folder, and this leaves it

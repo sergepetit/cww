@@ -2,7 +2,6 @@
 
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
 import { AGENT_VERSION_FILE, parseAgentVersion } from "../agents/registry";
 import {
   formatPortsDisplay,
@@ -19,7 +18,8 @@ import {
   type PortBinding,
 } from "../lib/docker";
 import { findAllSessions, readSessionFile } from "../lib/session";
-import { die, GREEN, NC, RED, YELLOW } from "../lib/ui";
+import { GREEN, NC, RED, YELLOW } from "../lib/ui";
+import { parseCommandArgs } from "./common";
 
 const USAGE = `Usage: cww list [options]
 
@@ -291,27 +291,14 @@ function printTable(rows: SessionRow[], opts: { versions?: boolean }): void {
 }
 
 export async function runList(argv: string[]): Promise<void> {
-  let json = false;
-  let versions = false;
-  try {
-    const { values } = parseArgs({
-      args: argv,
-      options: {
-        versions: { type: "boolean", default: false },
-        json: { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
-      },
-      allowPositionals: false,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    json = values.json;
-    versions = values.versions;
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(
+    argv,
+    USAGE,
+    { versions: { type: "boolean", default: false }, json: { type: "boolean", default: false } },
+    { allowPositionals: false },
+  );
+  if (!args) return;
+  const { json, versions } = args.values;
 
   const rows = await collectSessions({ versions });
 

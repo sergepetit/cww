@@ -2,10 +2,9 @@
 // ports to another machine's localhost.
 
 import { $ } from "bun";
-import { parseArgs } from "node:util";
 import { getPortMap, type PortBinding } from "../lib/docker";
-import { die, warn } from "../lib/ui";
-import { requireWorkspace } from "./common";
+import { warn } from "../lib/ui";
+import { parseCommandArgs, requireWorkspace } from "./common";
 
 const USAGE = `Usage: cww tunnel-command [workspace-name] [options]
 
@@ -62,29 +61,14 @@ export function buildTunnelSpec(map: PortBinding[]): TunnelSpec {
 }
 
 export async function runTunnelCommand(argv: string[]): Promise<void> {
-  let name: string | undefined;
-  let sshHost = "";
-  let terse = false;
-  try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      options: {
-        host: { type: "string" },
-        terse: { type: "boolean", short: "t", default: false },
-        help: { type: "boolean", short: "h", default: false },
-      },
-      allowPositionals: true,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    sshHost = values.host ?? "";
-    terse = values.terse;
-    name = positionals[0];
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE, {
+    host: { type: "string" },
+    terse: { type: "boolean", short: "t", default: false },
+  });
+  if (!args) return;
+  let sshHost = args.values.host ?? "";
+  const terse = args.values.terse;
+  const name = args.positionals[0];
 
   const ws = await requireWorkspace(name, USAGE);
 

@@ -1,14 +1,9 @@
 // cww attach — re-attach to a workspace's agent session.
 
-import { parseArgs } from "node:util";
-import {
-  attachAgentSession,
-  containerExists,
-  containerRunning,
-  startTaskStack,
-} from "../lib/docker";
+import { attachAgentSession, containerExists, containerRunning } from "../lib/docker";
 import { die, info } from "../lib/ui";
-import { resolveContainerLoosely } from "./common";
+import { startTaskStack } from "../lib/workspace";
+import { parseCommandArgs, resolveContainerLoosely } from "./common";
 
 const USAGE = `Usage: cww attach [workspace-name]
 
@@ -27,21 +22,9 @@ Examples:
 `;
 
 export async function runAttach(argv: string[]): Promise<void> {
-  let name: string | undefined;
-  try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      options: { help: { type: "boolean", short: "h", default: false } },
-      allowPositionals: true,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    name = positionals[0];
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE);
+  if (!args) return;
+  const name = args.positionals[0];
 
   const { workspace, container, taskDir } = await resolveContainerLoosely(name, USAGE);
 

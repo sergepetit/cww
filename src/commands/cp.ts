@@ -3,13 +3,12 @@
 // files to the in-container 'developer' user instead of leaving them
 // root-owned.
 
-import { parseArgs } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
 import { copyFromContainer, copyIntoContainer } from "../lib/container-fs";
 import { containerRunning } from "../lib/docker";
 import { die, error, success } from "../lib/ui";
-import { resolveContainerLoosely } from "./common";
+import { parseCommandArgs, resolveContainerLoosely } from "./common";
 
 const USAGE = `Usage: cww cp <source>... <workspace>:<dest>
        cww cp <workspace>:<source>... <dest>
@@ -108,25 +107,12 @@ export function parseCpArgs(positionals: string[]): CpPlan {
 }
 
 export async function runCp(argv: string[]): Promise<void> {
-  let positionals: string[] = [];
-  try {
-    const parsed = parseArgs({
-      args: argv,
-      options: { help: { type: "boolean", short: "h", default: false } },
-      allowPositionals: true,
-    });
-    if (parsed.values.help) {
-      console.log(USAGE);
-      return;
-    }
-    positionals = parsed.positionals;
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE);
+  if (!args) return;
 
   let plan: CpPlan;
   try {
-    plan = parseCpArgs(positionals);
+    plan = parseCpArgs(args.positionals);
   } catch (e) {
     error(e instanceof Error ? e.message : String(e));
     console.log(USAGE);

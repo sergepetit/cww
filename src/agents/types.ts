@@ -4,11 +4,13 @@
 // Dockerfile bakes. Adding an agent = adding such a folder plus one line in
 // registry.ts's AGENTS array — no shared file grows a new case.
 //
-// Import-cycle guard: agent modules must never import src/lib/docker.ts
-// (docker.ts imports the registry, which loads every agent module at import
-// time). Agents declare their personal assets declaratively (personalAssets
-// below); the registry owns the docker-cp plumbing, so agent modules need no
-// container access at all.
+// Import-cycle guard: agent modules must never import a module that imports
+// the registry back — the registry loads every agent module at import time, so
+// such an edge closes a cycle. In practice that means agent modules stay off
+// src/lib/workspace.ts and src/lib/cache-dir.ts, and off src/lib/docker.ts by
+// the same instinct. Agents declare their personal assets declaratively
+// (personalAssets below); the registry owns the docker-cp plumbing, so agent
+// modules need no container access at all.
 
 // The personal asset folders a project may carry under .cww/. Skills are the
 // open Agent Skills format (agentskills.io) and thus portable across agents;

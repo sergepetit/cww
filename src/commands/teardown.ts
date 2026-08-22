@@ -4,10 +4,9 @@
 // Git is your business inside the workspace — push whatever you want to keep
 // BEFORE tearing down. Teardown does not push anything.
 
-import { parseArgs } from "node:util";
 import { teardownTask } from "../lib/docker";
-import { confirm, die, info, success, warn } from "../lib/ui";
-import { requireWorkspace } from "./common";
+import { confirm, info, success, warn } from "../lib/ui";
+import { parseCommandArgs, requireWorkspace } from "./common";
 
 const USAGE = `Usage: cww teardown [workspace-name] [options]
 
@@ -29,26 +28,10 @@ Examples:
 `;
 
 export async function runTeardown(argv: string[]): Promise<void> {
-  let name: string | undefined;
-  let assumeYes = false;
-  try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      options: {
-        yes: { type: "boolean", short: "y", default: false },
-        help: { type: "boolean", short: "h", default: false },
-      },
-      allowPositionals: true,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    assumeYes = values.yes;
-    name = positionals[0];
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE, { yes: { type: "boolean", short: "y", default: false } });
+  if (!args) return;
+  const assumeYes = args.values.yes;
+  const name = args.positionals[0];
 
   const ws = await requireWorkspace(name, USAGE, {
     specifyMsg: "Could not determine the workspace from the current directory. Specify a name.",

@@ -11,7 +11,6 @@ import {
   agentContainerEnv,
   agentLabel,
   agentPreflight,
-  agentImage,
   findAuthMethod,
   getCwwDir,
   materializeCwwAssets,
@@ -21,14 +20,13 @@ import {
 } from "../agents/registry";
 import type { AgentAuthMethod } from "../agents/types";
 import { chooseAuthMethod, promptAuthMethod, promptStoreMethodSecret } from "../lib/auth-flow";
+import { provisionCacheDir } from "../lib/cache-dir";
 import { browserEnabled } from "../lib/config";
 import {
   attachAgentSession,
   containerExists,
   containerRunning,
-  provisionCacheDir,
   runResetScript,
-  startTaskStack,
   taskCompose,
 } from "../lib/docker";
 import { loadEnvFile } from "../lib/env";
@@ -43,6 +41,7 @@ import { resolveWorkspaceImage } from "../lib/project-image";
 import { resolveProjectPath } from "../lib/paths";
 import { readSession, writeSession } from "../lib/session";
 import { confirm, die, error, info, success, warn } from "../lib/ui";
+import { startTaskStack } from "../lib/workspace";
 
 const USAGE = `Usage: cww create [project-path] <workspace-name> [options]
 
@@ -128,12 +127,22 @@ interface TaskParams {
   workspaceName: string;
   branchName: string;
   agent: Agent;
+  auth: string; // the chosen auth method id, recorded in session.json
   image: string;
   repoUrl: string;
   gitAuthorName: string;
   gitAuthorEmail: string;
   projectPath: string;
   projectName: string;
+}
+
+// The two env channels an agent needs, kept apart because they are delivered
+// differently: the credential goes into the task-dir env file (0600, and the
+// only thing the start-time refresh ever rewrites), the plain vars into the
+// generated compose override.
+interface AgentEnv {
+  credential: Record<string, string>; // the ONE auth key the workspace receives
+  vars: Record<string, string>; // non-secret agent env (models, endpoints, ...)
 }
 
 // Generate docker-compose.yml from the template into the task dir.
@@ -340,6 +349,75 @@ async function waitForSession(container: string): Promise<boolean> {
 async function setupFailed(container: string): Promise<boolean> {
   const r = await $`docker exec ${container} test -f /tmp/cww-setup-failed`.quiet().nothrow();
   return r.exitCode === 0;
+}
+
+// Everything between "no container exists" and "the stack is up": the
+// workspace's host metadata, the generated compose files, the project's
+// services overlay, and the bring-up itself.
+//
+// One function for both entry paths — a fresh create, and a recreate over
+// metadata whose container is gone — because they never actually differed:
+// both start from an empty container and a clean clone, so whatever must be
+// (re)generated for one must be for the other. `fresh` only selects wording
+// and the first-time cache tips. Keeping them as two blocks is how an added
+// override file ends up wired into one path and not the other.
+async function materializeTaskDir(p: TaskParams, env: AgentEnv, fresh: boolean): Promise<void> {
+  const projectServices = path.join(p.projectPath, ".cww", "docker-compose.services.yml");
+  const taskServices = path.join(p.taskDir, "docker-compose.services.yml");
+
+  // The session describes the container that is about to exist, so a recreate
+  // refreshes every field rather than keeping what the previous container was
+  // made with: the compose files below are generated from exactly these
+  // values, and session.repoUrl is what the start-time secret refresh matches
+  // a git credential against. Unknown fields and the original creation time
+  // survive the merge — 'created' is when this workspace first appeared, not
+  // when its current container did.
+  const previous = fresh ? {} : readSession(p.taskDir);
+  writeSession(p.taskDir, {
+    ...previous,
+    project: p.projectName,
+    workspace: p.workspaceName,
+    branch: p.branchName,
+    agent: p.agent,
+    auth: p.auth,
+    container: p.containerName,
+    taskDir: p.taskDir,
+    mainRepo: p.projectPath,
+    repoUrl: p.repoUrl,
+    created: previous.created ?? new Date().toISOString(),
+  });
+  writeTaskEnv(p.taskDir, p.repoUrl, env.credential);
+
+  info("Generating docker-compose configuration...");
+  generateCompose(p);
+  reportServicesEnvLayers(p.projectName, p.workspaceName);
+  generateHostsOverride(p.taskDir, p.projectPath);
+  generateBrowserOverride(p.taskDir);
+  generateAgentEnvOverride(p.taskDir, env.vars);
+
+  // Re-synced from the project every time rather than trusting the saved copy:
+  // it may predate a config fix made after a failed create, and the project
+  // file may have been removed since.
+  if (fs.existsSync(projectServices)) {
+    if (fresh) info("Found project-specific services configuration");
+    assertServicesImageBased(projectServices);
+    fs.copyFileSync(projectServices, taskServices);
+    // Ensure any declared ~/.cww/cache mount exists and is container-writable.
+    await provisionDeclaredCaches(taskServices);
+  } else {
+    fs.rmSync(taskServices, { force: true });
+  }
+
+  info("Starting workspace (the container clones the repo inside)...");
+  await composeUp(p.taskDir);
+  if (!fresh) return;
+
+  success("Container started successfully!");
+  console.log("");
+  console.log(`Workspace: ${p.workspaceName}`);
+  console.log(`Container: ${p.containerName}`);
+  console.log("");
+  suggestCaches(p.projectPath, taskServices);
 }
 
 // Once the workspace is up: load any personal .cww assets, run the optional
@@ -568,20 +646,6 @@ export async function runCreate(argv: string[]): Promise<void> {
     if (typeof session.auth === "string") recordedAuth = session.auth;
   }
 
-  const params: TaskParams = {
-    taskDir,
-    containerName,
-    workspaceName,
-    branchName,
-    agent,
-    image: agentImage(agent),
-    repoUrl,
-    gitAuthorName,
-    gitAuthorEmail,
-    projectPath,
-    projectName,
-  };
-
   info(`Project: ${projectName}`);
   info(`Workspace: ${workspaceName}`);
   info(`Branch: ${branchName || "<repo default>"}`);
@@ -670,96 +734,45 @@ export async function runCreate(argv: string[]): Promise<void> {
 
   // Agent-specific preflight for the chosen method, and the containerEnv
   // hook — both can die() on invalid user config (e.g. a broken
-  // .cww/opencode.json), and that must happen before any metadata or
-  // container is created.
+  // .cww/opencode.json), and that must happen before anything is built or
+  // created, image included.
   agentPreflight(agent, projectPath, method);
-  const agentEnv = agentContainerEnv(agent, projectPath, process.env, method);
-  // Ensures the agent image and layers the project's optional .cww/Dockerfile
-  // on top. A build failure dies here, before any metadata or container
-  // exists (writeSession runs below in both the fresh and recreate paths).
-  params.image = await resolveWorkspaceImage(projectPath, projectName, agent);
+  const agentEnv: AgentEnv = {
+    // The single agent credential the workspace receives, carried by the
+    // task-dir env file next to the git credential.
+    credential:
+      method.envKey && process.env[method.envKey]
+        ? { [method.envKey]: process.env[method.envKey]! }
+        : {},
+    vars: agentContainerEnv(agent, projectPath, process.env, method),
+  };
 
-  // The single agent credential the workspace receives, carried by the
-  // task-dir env file next to the git credential.
-  const agentEnvEntries: Record<string, string> =
-    method.envKey && process.env[method.envKey]
-      ? { [method.envKey]: process.env[method.envKey]! }
-      : {};
+  const params: TaskParams = {
+    taskDir,
+    containerName,
+    workspaceName,
+    branchName,
+    agent,
+    auth: method.id,
+    // Ensures the agent image and layers the project's optional .cww/Dockerfile
+    // on top. A build failure dies here, before any metadata or container
+    // exists (materializeTaskDir writes both).
+    image: await resolveWorkspaceImage(projectPath, projectName, agent),
+    repoUrl,
+    gitAuthorName,
+    gitAuthorEmail,
+    projectPath,
+    projectName,
+  };
 
-  const projectServices = path.join(projectPath, ".cww", "docker-compose.services.yml");
-  const taskServices = path.join(taskDir, "docker-compose.services.yml");
-
-  // Task metadata exists but no container (e.g. it was removed): recreate it
-  // from the saved compose files. The clone is gone with the container, so the
-  // entrypoint re-clones fresh — a clean workspace, so finalize (seed) applies.
+  // Task metadata exists but no container (e.g. it was removed): everything is
+  // regenerated over it. The clone went with the container, so the entrypoint
+  // re-clones fresh — a clean workspace either way, which is why finalize
+  // (seeding included) applies to both.
   if (taskDirExists) {
     warn(`Workspace metadata exists at ${taskDir} but no container is present.`);
     info("Recreating the workspace...");
-    // Record the resolved auth method (pre-scoping sessions lack it), so the
-    // start-time secret refresh scopes to it from now on.
-    writeSession(taskDir, { ...readSession(taskDir), agent, auth: method.id });
-    writeTaskEnv(taskDir, repoUrl, agentEnvEntries);
-    generateCompose(params);
-    reportServicesEnvLayers(projectName, workspaceName);
-    generateHostsOverride(taskDir, projectPath);
-    generateBrowserOverride(taskDir);
-    generateAgentEnvOverride(taskDir, agentEnv);
-    // Re-sync the services overlay from the project rather than trusting the
-    // saved copy: it may predate a config fix made after a failed create, and
-    // the project file may have been removed since.
-    if (fs.existsSync(projectServices)) {
-      assertServicesImageBased(projectServices);
-      fs.copyFileSync(projectServices, taskServices);
-      await provisionDeclaredCaches(taskServices);
-    } else {
-      fs.rmSync(taskServices, { force: true });
-    }
-    await composeUp(taskDir);
-    await finalizeAndAttach(params, noAttach);
   }
-
-  // Write session metadata.
-  writeSession(taskDir, {
-    project: projectName,
-    workspace: workspaceName,
-    branch: branchName,
-    agent,
-    auth: method.id,
-    container: containerName,
-    taskDir,
-    mainRepo: projectPath,
-    repoUrl,
-    created: new Date().toISOString(),
-  });
-
-  writeTaskEnv(taskDir, repoUrl, agentEnvEntries);
-
-  info("Generating docker-compose configuration...");
-  generateCompose(params);
-  reportServicesEnvLayers(projectName, workspaceName);
-
-  // Project-specific services ride along into the task dir.
-  if (fs.existsSync(projectServices)) {
-    info("Found project-specific services configuration");
-    assertServicesImageBased(projectServices);
-    fs.copyFileSync(projectServices, taskServices);
-    // Ensure any declared ~/.cww/cache mount exists and is container-writable.
-    await provisionDeclaredCaches(taskServices);
-  }
-
-  info("Starting workspace (the container clones the repo inside)...");
-  generateHostsOverride(taskDir, projectPath);
-  generateBrowserOverride(taskDir);
-  generateAgentEnvOverride(taskDir, agentEnv);
-  await composeUp(taskDir);
-
-  success("Container started successfully!");
-  console.log("");
-  console.log(`Workspace: ${workspaceName}`);
-  console.log(`Container: ${containerName}`);
-  console.log("");
-
-  suggestCaches(projectPath, taskServices);
-
+  await materializeTaskDir(params, agentEnv, !taskDirExists);
   await finalizeAndAttach(params, noAttach);
 }

@@ -2,10 +2,9 @@
 // to reset and reseed its service data. Same script cww runs when a workspace
 // is created; run it again any time to get back to a clean, seeded state.
 
-import { parseArgs } from "node:util";
 import { containerRunning, runResetScript } from "../lib/docker";
 import { die, info, success, warn } from "../lib/ui";
-import { requireWorkspace } from "./common";
+import { parseCommandArgs, requireWorkspace } from "./common";
 
 const USAGE = `Usage: cww reset [workspace-name]
 
@@ -24,21 +23,9 @@ Examples:
 `;
 
 export async function runReset(argv: string[]): Promise<void> {
-  let name: string | undefined;
-  try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      options: { help: { type: "boolean", short: "h", default: false } },
-      allowPositionals: true,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    name = positionals[0];
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE);
+  if (!args) return;
+  const name = args.positionals[0];
 
   const ws = await requireWorkspace(name, USAGE, {
     specifyMsg: "Could not determine the workspace from the current directory. Specify a name.",

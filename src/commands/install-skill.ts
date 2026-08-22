@@ -10,7 +10,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
 import {
   agentHostSkillsDir,
   agentLabel,
@@ -23,6 +22,7 @@ import { resolveAgent } from "../agents/registry";
 import { loadEnvFile } from "../lib/env";
 import { skillEntryPlan, tilde, writeSkillEntry } from "../lib/skill-link";
 import { die, info, success, warn } from "../lib/ui";
+import { parseCommandArgs } from "./common";
 
 const USAGE = `Usage: cww install-skill [agent] [options]
 
@@ -141,32 +141,14 @@ function remove(target: InstallTarget, source: string): boolean {
 }
 
 export async function runInstallSkill(argv: string[]): Promise<void> {
-  let agentArg: string | undefined;
-  let all = false;
-  let copy = false;
-  let removing = false;
-  try {
-    const { values, positionals } = parseArgs({
-      args: argv,
-      options: {
-        all: { type: "boolean", default: false },
-        copy: { type: "boolean", default: false },
-        remove: { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
-      },
-      allowPositionals: true,
-    });
-    if (values.help) {
-      console.log(USAGE);
-      return;
-    }
-    all = values.all ?? false;
-    copy = values.copy ?? false;
-    removing = values.remove ?? false;
-    [agentArg] = positionals;
-  } catch (e) {
-    die(e instanceof Error ? e.message.split("\n")[0]! : String(e));
-  }
+  const args = parseCommandArgs(argv, USAGE, {
+    all: { type: "boolean", default: false },
+    copy: { type: "boolean", default: false },
+    remove: { type: "boolean", default: false },
+  });
+  if (!args) return;
+  const { all, copy, remove: removing } = args.values;
+  const [agentArg] = args.positionals;
 
   if (all && agentArg) die("Pass an agent or --all, not both.");
   if (copy && removing) die("--copy and --remove do nothing together.");

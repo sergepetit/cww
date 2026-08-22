@@ -16,8 +16,11 @@ import { $ } from "bun";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-// Registry values are only read inside function bodies (same import-cycle
-// caution as docker.ts — this module sits in the registry's import graph).
+// Registry values are only read inside function bodies. Nothing in the
+// registry's import graph reaches back here today, so there is no cycle to
+// trip over — this is a standing guard: the registry loads every agent module
+// at import time, so deferring the reads is what keeps a future agent module
+// that wants something from this file from meeting it half-initialized.
 import {
   agentAuthEnvKeys,
   agentAuthMethods,
