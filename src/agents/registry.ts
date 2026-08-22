@@ -189,11 +189,15 @@ export function personalAssetPlan(projectPath: string, agent: Agent): PersonalAs
 
 // The docs bundled into the built-in skill as references/ — pulled straight
 // from the install's docs/ at create time, so there is no second copy of the
-// facts to drift (install.sh ships docs/ for this).
+// facts to drift (install.sh ships docs/ for this). The same set backs the
+// host-side skill, which install.sh stages into
+// templates/skills/cww-host/references/ (tests/install-skill.test.ts pins the
+// two lists together).
 export const BUILTIN_SKILL_REFERENCES = [
   "user-guide.md",
   "accessing-services.md",
   "git-strategy.md",
+  "cww-project-config.md",
 ] as const;
 
 // Agent-specific troubleshooting notes, staged as the skill's

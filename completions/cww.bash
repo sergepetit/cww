@@ -18,7 +18,7 @@ _cww() {
         cword=$COMP_CWORD
     fi
 
-    local commands="init auth create teardown attach shell start stop reset cp export-skill list tunnel-command cache build help version"
+    local commands="init auth create teardown attach shell start stop reset cp export-skill install-skill list tunnel-command cache build help version"
     local presets="npm m2 ivy2 sbt coursier gradle"
 
     if [[ $cword -eq 1 ]]; then
@@ -77,6 +77,7 @@ _cww() {
             tunnel-command|tunnel) flags="--host -h --help" ;;
             cache)                 flags="--from -h --help" ;;
             export-skill)          flags="--from --copy -h --help" ;;
+            install-skill)         flags="--all --copy --remove -h --help" ;;
             build)                 flags="--cached -h --help" ;;
         esac
         COMPREPLY=($(compgen -W "$flags" -- "$cur"))
@@ -89,6 +90,9 @@ _cww() {
             ;;
         build)
             COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null) all" -- "$cur"))
+            ;;
+        install-skill)
+            COMPREPLY=($(compgen -W "$(cww __complete agents 2>/dev/null)" -- "$cur"))
             ;;
         cp)
             # Arguments are host paths or '<workspace>:<path>' specs: offer

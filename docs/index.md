@@ -11,6 +11,7 @@ description: Master index of the project's authored documentation
 - [user-guide.md](user-guide.md) — Full user documentation — installation, authentication, every command, the Docker image, project services, the built-in browser, configuration, and troubleshooting
 - [accessing-services.md](accessing-services.md) — How to reach a workspace's services from a browser — port publishing, why plain-http LAN origins break secure contexts, and SSH-forwarding to one fixed localhost origin
 - [git-strategy.md](git-strategy.md) — The two git mechanics cww owns — clone-in-container and the developer's own scoped credential — plus attribution and example workflows
+- [cww-project-config.md](cww-project-config.md) — What each file in a repo's .cww/ folder does, the host-side env layers that sit outside it, and how a change to either takes effect — the shared reference for configuring a project, from the host or from inside a workspace
 - [agent-cli-updates.md](agent-cli-updates.md) — How an agent CLI gets into a workspace and how it is updated — images freeze the CLI, 'cww build' re-resolves it, and existing workspaces need a recreate, with the evidence for why each piece exists
 
 ## Plans
@@ -22,6 +23,7 @@ description: Master index of the project's authored documentation
 - [agent-env-scoping-plan.md](agent-env-scoping-plan.md) — Stop injecting all of ~/.cww/env into every workspace — each agent declares the keys it needs, and an explicit --auth method (persisted like the git setup flow) determines the single credential a workspace gets *(done)*
 - [workspace-skill-plan.md](workspace-skill-plan.md) — Inject a built-in cww skill into every workspace at create (and re-sync it on every start), so the agent knows it is running inside a cww workspace — which commands are host-side, how the environment is wired, and guided flows for authoring the repo's .cww/ config from within *(done)*
 - [export-skill-plan.md](export-skill-plan.md) — A cww export-skill command that shares one skill from the host's agent config with a project — a symlink into .cww/skills/ for future creates, plus live injection into running workspaces *(done)*
+- [host-skill-plan.md](host-skill-plan.md) — Ship a second built-in skill for the agent running on the user's own machine — opt-in, symlinked into one host agent config — so setting a repo up for cww and authoring its .cww/ files stops being guidance that only exists inside a workspace *(active)*
 - [cp-plan.md](cp-plan.md) — A cww cp command that copies files between the host and a running workspace, scp-style (ws:path), resolving the container name and handing pushed files to the in-container developer user *(done)*
 - [copilot-agent-plan.md](copilot-agent-plan.md) — Add GitHub Copilot CLI as a fourth agent, including its BYOK mode so a workspace can run against a third-party OpenAI-compatible endpoint (e.g. a LAN llama.cpp server) *(done)*
 - [pi-agent-plan.md](pi-agent-plan.md) — Add Pi (pi.dev) as a fifth agent — a provider-agnostic Node CLI that maps almost 1:1 onto the OpenCode agent, minus the in-workspace browser (Pi has no MCP) *(active)*

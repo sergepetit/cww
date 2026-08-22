@@ -84,6 +84,7 @@ _cww() {
     "reset:Re-run the project's .cww/reset.sh (reset/reseed data)"
     'cp:Copy files between the host and a workspace (scp-style)'
     'export-skill:Export a personal skill from the host agent config into workspaces'
+    'install-skill:Install the host-side cww skill into an agent config on this machine'
     'list:List all workspaces and how current their images are'
     "tunnel-command:Print the ssh command to reach a workspace's ports"
     'cache:Provision a shared dependency-cache dir (npm, m2, ...)'
@@ -150,6 +151,14 @@ _cww() {
             $help_opt \
             '1:skill:_cww_host_skills' \
             '2:workspace:_cww_workspaces'
+          ;;
+        install-skill)
+          _arguments \
+            '--all[install into every agent config that supports skills]' \
+            '--copy[copy instead of linking (stops following the installed version)]' \
+            '--remove[remove a previously installed skill]' \
+            $help_opt \
+            '1:agent:_cww_agents'
           ;;
         tunnel-command|tunnel)
           _arguments \

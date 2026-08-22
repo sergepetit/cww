@@ -12,6 +12,7 @@ import { runCp } from "./commands/cp";
 import { runCreate } from "./commands/create";
 import { runExportSkill } from "./commands/export-skill";
 import { runInit } from "./commands/init";
+import { runInstallSkill } from "./commands/install-skill";
 import { runList } from "./commands/list";
 import { runReset } from "./commands/reset";
 import { runStart } from "./commands/start";
@@ -46,6 +47,8 @@ Commands:
   cp <src>... <dest>      Copy files host <-> workspace, scp-style (ws:path)
   export-skill [name]     Export a personal skill from your host agent config
                           into this repo's workspaces (no name: list skills)
+  install-skill [agent]   Install the host-side cww skill into an agent config on
+                          this machine, so it can set repos up and drive workspaces
   list                    List all workspaces and how current their images are
   tunnel-command [name]   Print the ssh command to reach a workspace's ports
   cache <preset|name>     Provision a shared dependency-cache dir (npm, m2, …)
@@ -116,6 +119,9 @@ try {
       break;
     case "init":
       await runInit(rest);
+      break;
+    case "install-skill":
+      await runInstallSkill(rest);
       break;
     case "list":
     case "ls":

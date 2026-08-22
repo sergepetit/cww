@@ -138,71 +138,26 @@ Command details, options, and troubleshooting: `references/user-guide.md`.
 ## Helping configure cww for this repo (`.cww/`)
 
 You are well placed to author the repo's `.cww/` files — the repo usually
-already contains the raw material. What each file is for:
+already contains the raw material (an existing `docker-compose.yml`, CI
+config, migration and seed tooling). Before writing any of them, **read
+`references/cww-project-config.md`** — it is the single source of truth for
+what each file does, the two compose rules that are specific to cww, which
+values must *not* go in the repo, and the commit-push-pull loop that a change
+made in here has to complete before it does anything at all.
 
-- **`.cww/docker-compose.services.yml`** — the services every workspace of
-  this repo gets. Infer it from an existing `docker-compose.yml`, CI config,
-  or README. Two cww-specific rules: use the **container-port-only** form for
-  published ports (`ports: ["5174"]`, never `"5174:5174"` — parallel
-  workspaces would collide), and point named dependency caches at
-  `${HOME}/.cww/cache/...` mounts (the user provisions them with `cww cache`).
-- **`.cww/reset.sh`** — one script that resets *and* reseeds service data
-  (drop/recreate schema, load fixtures, …). Derive it from the project's
-  migration and seed tooling. It runs inside the workspace at create and on
-  `cww reset`.
-- **`.cww/Dockerfile`** — extra image layers (system packages, compilers,
-  SDKs) built on top of the agent image at create. Must start with
-  `ARG BASE_IMAGE=coder-workspace-workflow:claude` + `FROM ${BASE_IMAGE}`
-  (cww overrides `BASE_IMAGE` with the workspace's agent image; the default
-  only silences BuildKit's InvalidDefaultArgInFrom warning and keeps a bare
-  `docker build .cww` working). The build context is `.cww/`, so `COPY` sees
-  sibling files. A new image applies only to a *recreated* workspace — the
-  full loop below.
-- **`.cww/hosts`** — `name ip` lines for internal VCS/registry hostnames the
-  container's DNS can't resolve.
-- **`.cww/opencode.json`** — personal OpenCode config (custom/local model
-  providers). **`.cww/skills/`** — personal skills, loaded for whichever
-  agent runs (portable Agent Skills format). **`.cww/commands/`,
-  `.cww/agents/`** — Claude Code formats, loaded for claude workspaces only.
-  These are personal, usually-gitignored files; the two compose/reset files
-  above are typically committed.
+Two things from it that are worth stating up front, because getting them
+wrong is silent:
 
-Generated config is something the host will *run*: present it to the user
-for review rather than committing and pushing it silently.
+- **`.cww/` here is not the `.cww/` cww reads.** cww reads the user's host
+  checkout. A file you edit in `/workspace` does nothing until you commit and
+  push it, the user pulls, and the user runs the applying command on their
+  machine. Spell that loop out every time you change these files.
+- **Secrets and machine-specific values belong in the user's host-side
+  services env**, not in the repo — three layers you cannot see from in here.
+  Tell them which one to use rather than writing the value into `.cww/`.
 
-**Env vars are the one thing that may not belong in `.cww/`.** Values that are
-shareable and not secret can be `environment:` entries in
-`.cww/docker-compose.services.yml`, which you can author here. Anything secret
-or machine-specific belongs in the user's host-side services env instead —
-three layers, narrower overriding broader, none of them visible from inside
-this workspace:
-
-| File (on the host) | Applies to |
-|---|---|
-| `~/.cww/services.env` | every workspace on their machine |
-| `~/.cww/services/<project>.env` | every workspace of this repo |
-| `~/.cww/services/<project>/<workspace>.env` | one workspace |
-
-So when a value you need is a credential, an internal endpoint, or otherwise
-theirs and not the team's, don't write it into the repo — tell them which layer
-to add it to and that `cww create` prints the exact paths. Like the other
-`.cww/` changes, it lands only on `cww teardown NAME && cww create NAME`.
-
-## How `.cww/` changes take effect
-
-cww reads `.cww/` from the **user's host checkout**, not from this clone —
-a file you edit here does nothing until it completes this loop:
-
-1. You edit `.cww/…` in `/workspace`, commit, and push.
-2. The user pulls on their host.
-3. The user runs the applying command there:
-   - services / hosts / env / Dockerfile changes → `cww teardown NAME &&
-     cww create NAME` (a fresh workspace)
-   - `reset.sh` changes → `cww reset NAME`
-   - credential or clone-URL changes → `cww init`
-
-Spell this loop out every time you change `.cww/` files, or they will
-silently do nothing.
+Generated config is something the host will *run*: present it to the user for
+review rather than committing and pushing it silently.
 
 ## Your own quirks: `references/troubleshooting.md`
 
@@ -233,6 +188,9 @@ setup, and every command in them are host-side. Nothing in them runs inside
 this workspace unless this skill says so — relay such steps to the user, and
 never ask them to bring host secrets in here.
 
+- `references/cww-project-config.md` — every file in a repo's `.cww/`, the
+  host-side env layers that sit outside it, and how a change to either takes
+  effect. Read it before writing any `.cww/` file.
 - `references/user-guide.md` — every command and option, authentication,
   the Docker image, project services, the built-in browser, dependency
   caches, configuration, troubleshooting.

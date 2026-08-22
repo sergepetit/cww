@@ -345,6 +345,22 @@ cww export-skill organize-docs sandbox        # Only into 'sandbox'
 cww export-skill deploy --from claude --copy  # Snapshot from a specific config
 ```
 
+### `cww install-skill [agent] [options]`
+
+Install cww's **host-side** skill into a coding agent's config on this machine, so the agent you run outside a workspace knows how to set repos up for cww and drive workspaces for you (see [The host-side skill](#the-host-side-skill-opt-in)). It lands as `cww/` in that agent's host skills dir — `~/.claude/skills`, `~/.vibe/skills`, `~/.config/opencode/skills`, `~/.copilot/skills` — and is **symlinked into the install**, so updating cww updates the skill.
+
+With no argument it installs for your default agent (`CWW_AGENT` from `~/.cww/env`, else claude); `--all` covers every agent config that supports skills (Pi declares none, and is skipped with a notice). It never overwrites: an existing `cww` entry that isn't ours is reported and left alone.
+
+```bash
+cww install-skill                # Into your default agent's config
+cww install-skill opencode       # Into ~/.config/opencode/skills
+cww install-skill --all          # Every agent config on this machine
+cww install-skill --copy         # Snapshot instead of linking
+cww install-skill --remove       # Take it back out
+```
+
+`--copy` snapshots the skill instead of linking it — useful if you want to edit your copy, at the cost of no longer following cww updates. `--remove` unlinks it, and only ever removes cww's own link: a real directory, or a link pointing elsewhere, is left alone. Run `--remove` **before** deleting an install, or you're left with a dangling symlink in your agent config. Agents discover skills at session start, so restart yours after installing.
+
 ### `cww teardown [workspace-name] [-y|--yes]`
 
 Remove the workspace and everything it created: the agent container, service containers, the network, this workspace's volumes, and its host metadata. It is **destructive** and **pushes nothing** — push anything worth keeping first (via `cww shell` then `git push`, or from the agent). Prompts for confirmation unless `-y`. `down` is an alias.
@@ -565,11 +581,19 @@ Skills are the open [Agent Skills](https://agentskills.io) format (a folder with
 
 Every workspace also gets a built-in `cww` skill (same Agent Skills format), loaded at create into the agent's skills dir as `cww/` — `~/.claude/skills/cww`, `~/.vibe/skills/cww`, `~/.config/opencode/skills/cww`, or `~/.copilot/skills/cww`. (Pi is the exception: its skills use a different format, so the built-in `cww` skill isn't injected into a Pi workspace yet.) It tells the agent it is running inside a cww workspace: how the environment is wired (sibling service containers, loopback-published ports it can't see from inside, the built-in browser), that every `cww` command is host-side (so it answers "how do I reset the data?" with *"on your host machine, run `cww reset …`"* instead of inventing docker commands), the git ground rules, and guided flows for authoring the repo's `.cww/` config from inside — including the loop that makes such changes take effect (commit + push, you pull on the host, then run the applying command there).
 
-For factual reference the skill bundles this user guide plus [accessing-services.md](accessing-services.md) and [git-strategy.md](git-strategy.md) as skill references, copied from the installed cww's `docs/` at create time.
+For factual reference the skill bundles this user guide plus [cww-project-config.md](cww-project-config.md), [accessing-services.md](accessing-services.md) and [git-strategy.md](git-strategy.md) as skill references, copied from the installed cww's `docs/` at create time.
 
 The skill is also **re-copied on every start** (`cww start`, and the `cww attach`/`cww shell` paths that resume a stopped workspace), so a workspace created before a cww upgrade picks up the current skill and docs the next time you start it — no recreate. Unlike the agent CLI, which is frozen in the image for the container's whole life ([Agent CLI Updates](agent-cli-updates.md)), the skill is a handful of files, so keeping it current is cheap. A workspace that is already running is refreshed at its next `cww stop` + `cww start`.
 
 Only the skill's *content* is refreshed, never the decision to have one: disable it with `CWW_SKILL=off` in `~/.cww/env` (global) or `"skill": "off"` in the project's `~/.cww/config.json` entry (per-project) — the same two-level pattern as the browser flag — and a workspace created that way stays without it, like every other create-time choice. A personal `.cww/skills/cww/` folder overrides the built-in skill (personal assets are copied after it), and the refresh leaves that override in place.
+
+### The host-side skill (opt-in)
+
+The skill above lives inside workspaces, which means it can only help once a workspace exists. Setting a repo up in the first place — `cww init`, authoring `.cww/`, the first `cww create` — happens on your machine, where your agent knows nothing about cww. [`cww install-skill`](#cww-install-skill-agent-options) fixes that: it puts a second built-in skill, also named `cww`, into one of your host agent configs.
+
+It is **opt-in and never installed for you.** `install.sh` writes only to the install dir and `~/.local/bin/cww`; cww otherwise only ever *reads* your agent config dirs (that's what `cww export-skill` searches). Installing it is one command, and `--remove` takes it back out.
+
+The two skills never meet — one is on your machine, one is inside a container — so they share the name and split the subject: the workspace one describes being inside a workspace and treats every `cww` command as something you must run; the host one describes driving cww, and lets the agent run the read-only and reversible commands itself (`cww list`, `cww tunnel-command`, `cww cp`, `cww start`/`cww stop`, `cww create --no-attach`) while explicitly reserving `cww teardown`, `cww init`, and `cww auth` for you — the destructive one and the two that take secrets on a prompt.
 
 ## Built-in headful browser
 

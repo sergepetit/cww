@@ -120,6 +120,21 @@ rm -rf "$INSTALL_DIR/docs"
 mkdir -p "$INSTALL_DIR/docs"
 cp "$SOURCE_DIR/docs/"*.md "$INSTALL_DIR/docs/"
 
+# Stage the host-side skill's references/. The in-workspace skill assembles
+# its own at create time, when it is copied into the container; the host skill
+# is consumed *in place* ('cww install-skill' points a host agent config at
+# this folder), so its references have to exist here. Relative symlinks rather
+# than copies: they stay inside the install dir (so it is still relocatable),
+# and re-running this installer refreshes their content for free.
+# Keep the list in sync with BUILTIN_SKILL_REFERENCES in src/agents/registry.ts
+# — tests/install-skill.test.ts fails if the two drift.
+HOST_SKILL_REFS="$INSTALL_DIR/templates/skills/cww-host/references"
+rm -rf "$HOST_SKILL_REFS"
+mkdir -p "$HOST_SKILL_REFS"
+for doc in user-guide.md accessing-services.md git-strategy.md cww-project-config.md; do
+    ln -s "../../../../docs/$doc" "$HOST_SKILL_REFS/$doc"
+done
+
 # Copy examples
 mkdir -p "$INSTALL_DIR/examples"
 cp "$SOURCE_DIR/examples/"* "$INSTALL_DIR/examples/"
@@ -295,6 +310,10 @@ echo ""
 echo "Quick start:"
 echo "  cd /path/to/your/project"
 echo "  cww create <workspace-name>"
+echo ""
+echo "Optional — teach the coding agent on THIS machine about cww, so it can"
+echo "set repos up and drive workspaces for you:"
+echo "  cww install-skill"
 echo ""
 echo "Commands:"
 echo "  cww create   - Create a workspace (container clones the repo)"

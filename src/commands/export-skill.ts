@@ -22,6 +22,7 @@ import { copyDirIntoContainer } from "../lib/container-fs";
 import { containerRunning } from "../lib/docker";
 import { getGitRoot } from "../lib/git";
 import { findRepoWorkspaces, resolveWorkspace, type WorkspaceRef } from "../lib/session";
+import { skillEntryPlan, tilde, writeSkillEntry, type SkillEntryPlan } from "../lib/skill-link";
 import { die, error, info, success, warn } from "../lib/ui";
 
 const USAGE = `Usage: cww export-skill [skill-name] [workspace-name] [options]
@@ -103,17 +104,13 @@ export function findSkillSources(name: string, from?: Agent, home: string = os.h
 }
 
 export type LinkPlan =
-  | { action: "link"; path: string; target: string }
-  | { action: "copy"; path: string; source: string }
-  | {
-      action: "skip";
-      path: string;
-      reason: "covered-by-linked-dir" | "linked-dir" | "already-linked" | "occupied";
-    };
+  | SkillEntryPlan
+  | { action: "skip"; path: string; reason: "covered-by-linked-dir" | "linked-dir" };
 
 // What the persistent half should do to <repo>/.cww/skills. Never writes
 // through a symlinked .cww/skills (that would edit the host config it points
-// at), and never overwrites an existing entry.
+// at); the entry-level rules — link, snapshot, never overwrite — are shared
+// with 'cww install-skill' via skillEntryPlan.
 export function linkPlan(projectPath: string, skill: { name: string; dir: string }, copy: boolean): LinkPlan {
   const skillsDir = path.join(projectPath, ".cww", "skills");
   const entry = path.join(skillsDir, skill.name);
@@ -124,20 +121,7 @@ export function linkPlan(projectPath: string, skill: { name: string; dir: string
     const covered = fs.existsSync(path.join(entry, "SKILL.md"));
     return { action: "skip", path: entry, reason: covered ? "covered-by-linked-dir" : "linked-dir" };
   }
-  const entryStat = fs.lstatSync(entry, { throwIfNoEntry: false });
-  if (entryStat) {
-    try {
-      if (entryStat.isSymbolicLink() && fs.realpathSync(entry) === fs.realpathSync(skill.dir)) {
-        return { action: "skip", path: entry, reason: "already-linked" };
-      }
-    } catch {
-      // A broken symlink realpaths to nothing: treat as occupied below.
-    }
-    return { action: "skip", path: entry, reason: "occupied" };
-  }
-  return copy
-    ? { action: "copy", path: entry, source: skill.dir }
-    : { action: "link", path: entry, target: skill.dir };
+  return skillEntryPlan(entry, skill.dir, copy);
 }
 
 export interface InjectionTarget {
@@ -160,19 +144,13 @@ export function injectionTarget(ws: WorkspaceRef, name: string): InjectionTarget
   };
 }
 
-// ~-abbreviate a host path for display.
-function tilde(p: string): string {
-  const home = os.homedir();
-  return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
-}
-
 function printSkillList(from?: Agent): void {
   const skills = listHostSkills().filter((s) => !from || s.agent === from);
   if (skills.length === 0) {
     const dirs = (from ? [from] : CWW_AGENTS)
       .map((a) => agentHostSkillsDir(a))
       .filter((d): d is string => !!d)
-      .map(tilde);
+      .map((d) => tilde(d));
     warn(`No exportable skills found (searched ${dirs.join(", ")}).`);
     return;
   }
@@ -210,12 +188,10 @@ async function applyLinkPlan(projectPath: string, skill: HostSkill, copy: boolea
         return false;
     }
   }
-  fs.mkdirSync(path.dirname(plan.path), { recursive: true });
+  writeSkillEntry(plan);
   if (plan.action === "copy") {
-    fs.cpSync(plan.source, plan.path, { recursive: true, dereference: true });
     success(`Copied the skill to ${rel} (a snapshot — it won't follow the host version).`);
   } else {
-    fs.symlinkSync(plan.target, plan.path);
     success(`Linked ${rel} -> ${tilde(plan.target)} (future creates carry it).`);
   }
   // Personal-tier assets are usually gitignored; a committed absolute symlink
@@ -268,7 +244,7 @@ export async function runExportSkill(argv: string[]): Promise<void> {
     const dirs = (from ? [from] : CWW_AGENTS)
       .map((a) => agentHostSkillsDir(a))
       .filter((d): d is string => !!d)
-      .map(tilde);
+      .map((d) => tilde(d));
     die(`No skill '${name}' found (searched ${dirs.join(", ")}).`);
   }
   if (sources.length > 1) {
