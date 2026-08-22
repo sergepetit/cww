@@ -258,6 +258,8 @@ A workspace runs the agent image as it stands at create time, for its whole life
 
 `--auth <method>` picks how the workspace's agent authenticates — the workspace receives **exactly that method's credential and nothing else** (see [Authentication setup](#authentication-setup)). Methods per agent: claude `oauth-token | api-key | none`, vibe `api-key | config-file`, opencode `anthropic-api-key | openai-api-key | openrouter-api-key | opencode-api-key | config-file`, copilot `github-token | provider | provider-key`, pi `anthropic-api-key | openai-api-key | openrouter-api-key | config-file`. Resolution mirrors `--agent`: the flag, then the project's `"auth"` in `~/.cww/config.json`, then `CWW_AUTH` from `~/.cww/env`; with nothing configured, the agent's default method applies when its key is already stored, and otherwise create **asks once** and records the answer in the project's config. If the chosen method's key isn't stored yet, create hands off to the [`cww auth`](#cww-auth-agentgitkeyvalue-options) store flow inline. Like the agent, the method is recorded in the workspace's metadata and survives recreates.
 
+`--remote <name>` picks which remote's URL the workspace clones, for that invocation only — the project's stored clone URL in `~/.cww/config.json` is left as it is. Naming the *same* remote the repo was set up with keeps the configured URL, your corrections to scheme or port included; a *different* one (upstream rather than your fork, say) is derived fresh with `git remote get-url`, and a name the repo doesn't have is a hard error. On a repo's **first** create — the one that runs setup inline — it picks the remote setup derives its suggestion from, exactly like [`cww init --remote`](#cww-init-project-path-options). The URL lands in the workspace's metadata, and the credential the workspace clones and pushes with is whichever stored one covers it (see [Authentication setup](#authentication-setup)).
+
 ```bash
 cww create feature-auth               # From within a git repo (workspace named "feature-auth")
 cww create . feature-auth             # Explicit current directory
@@ -267,6 +269,7 @@ cww create sandbox --agent vibe       # Run Mistral Vibe instead of the default 
 cww create sandbox --agent opencode   # ... or OpenCode
 cww create local --agent copilot --auth provider   # Copilot on a BYOK endpoint (e.g. llama.cpp)
 cww create metered --auth api-key     # Claude Code on metered API billing (explicit opt-in)
+cww create audit --remote upstream    # Clone upstream's URL instead of the configured remote
 cww create feature-auth --no-attach   # Create without attaching to tmux
 ```
 
@@ -564,7 +567,7 @@ FROM ${BASE_IMAGE}
 RUN sudo apt-get update && sudo apt-get install -y build-essential
 ```
 
-- cww passes `--build-arg BASE_IMAGE=coder-workspace-workflow:<agent>` for the workspace's agent, so the same Dockerfile serves claude, vibe, opencode, and copilot workspaces. Hardcoding your own `FROM` instead pins one agent — or builds on an image without the cww entrypoint and `developer` user — so cww warns when the file doesn't reference `BASE_IMAGE`. (The `ARG` default just keeps a bare `docker build .cww` working for debugging.)
+- cww passes `--build-arg BASE_IMAGE=coder-workspace-workflow:<agent>` for the workspace's agent, so the same Dockerfile serves claude, vibe, opencode, copilot, and pi workspaces. Hardcoding your own `FROM` instead pins one agent — or builds on an image without the cww entrypoint and `developer` user — so cww warns when the file doesn't reference `BASE_IMAGE`. (The `ARG` default just keeps a bare `docker build .cww` working for debugging.)
 - The build context is the `.cww/` folder itself, so `COPY provision.sh /usr/local/bin/` works for files dropped next to the Dockerfile.
 - The derived image is tagged `cww-project-<project>:<agent>` and rebuilt at every create — an unchanged rebuild takes seconds thanks to Docker's layer cache, and edits to the Dockerfile or `COPY`'d files are picked up automatically.
 - Like the other `.cww/` hooks, the file is read from your **host checkout**: edits apply to the next create/recreate, and existing workspaces keep the image they were created with.
@@ -600,7 +603,7 @@ The two skills never meet — one is on your machine, one is inside a container 
 Every workspace container runs a real, visible browser (Google Chrome on amd64, Chromium on arm64) on a virtual display (Xvfb), shared by the agent and you:
 
 - **The agent drives it.** All agents come with the [Chrome DevTools MCP server](https://github.com/ChromeDevTools/chrome-devtools-mcp) preconfigured, attached to that browser over CDP (`127.0.0.1:9222`, container-internal only) — baked into `~/.claude.json` on claude images, appended to `~/.vibe/config.toml` at boot on vibe images, baked into `~/.config/opencode/opencode.json` on opencode images, baked into `~/.copilot/mcp-config.json` on copilot images. The agent can navigate, click, fill forms, read the console, take screenshots — no setup.
-- **You watch and take over the same browser** via noVNC on container port 7900, published like any service port (loopback-only, Docker-assigned host port — check `cww list`). Open `http://localhost:<host-port>/vnc.html?autoconnect=1&resize=scale` on the docker host, or from another machine through [`cww tunnel-command`](#cww-tunnel-command-workspace-name) and then `http://localhost:7900/vnc.html?autoconnect=1&resize=scale`. Type a login or 2FA code into the page the agent is stuck on, watch what it's doing in real time, then disconnect — the browser (and the agent) keep going. Because each workspace has its own browser, you can hop between workspaces by just switching tabs.
+- **You watch and take over the same browser** via noVNC on container port 7900, published like any service port (loopback-only, Docker-assigned host port — check `cww list`). Open `http://localhost:<host-port>/vnc.html?autoconnect=1&resize=scale` on the docker host, or from another machine through [`cww tunnel-command`](#cww-tunnel-command-workspace-name-options) and then `http://localhost:7900/vnc.html?autoconnect=1&resize=scale`. Type a login or 2FA code into the page the agent is stuck on, watch what it's doing in real time, then disconnect — the browser (and the agent) keep going. Because each workspace has its own browser, you can hop between workspaces by just switching tabs.
 
 Notes:
 

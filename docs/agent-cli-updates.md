@@ -7,7 +7,7 @@ created: 2026-07-26
 
 # Agent CLI Updates
 
-An agent CLI (`claude`, `vibe`, `opencode`, `copilot`) is **installed when its
+An agent CLI (`claude`, `vibe`, `opencode`, `copilot`, `pi`) is **installed when its
 image is built and never moves again inside a container**. That single fact
 decides everything below: how you get a newer CLI, why a running workspace
 never changes underneath you, and what cww has to tell you so the freeze is
@@ -27,11 +27,18 @@ re-copied from the installed cww on every start ([workspace-skill-plan.md](works
 it is a dozen small files, where the CLI is an image layer. The freeze below is
 about the CLI specifically, not about workspaces being immutable on principle.
 
-Self-update is suppressed in all four images, deliberately, and stays that way:
-a disposable container that mutates its own tooling mid-session is worse than
-one that doesn't. For vibe it is load-bearing rather than belt-and-braces — an
-update attempt there fails and exits non-zero, which kills the tmux pane
-instead of landing the user at a prompt (see `src/agents/vibe/Dockerfile`).
+Self-update is suppressed deliberately, and stays that way: a disposable
+container that mutates its own tooling mid-session is worse than one that
+doesn't. For vibe it is load-bearing rather than belt-and-braces — an update
+attempt there fails and exits non-zero, which kills the tmux pane instead of
+landing the user at a prompt (see `src/agents/vibe/Dockerfile`).
+
+Four of the five images carry a brake: `DISABLE_AUTOUPDATER` (claude),
+`VIBE_ENABLE_UPDATE_CHECKS` (vibe), `OPENCODE_DISABLE_AUTOUPDATE` plus
+`"autoupdate": false` (opencode), `COPILOT_AUTO_UPDATE` (copilot). **Pi has
+none yet** — whether it self-updates at all is still an open host-verification
+item ([pi-agent-plan.md](pi-agent-plan.md#phase-3--host-side-end-to-end-verification)),
+so a pi workspace is the one place this section does not yet describe.
 
 So the update path is deliberate and explicit, in three steps.
 

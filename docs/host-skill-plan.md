@@ -121,7 +121,7 @@ Then the material that has no host-side home today:
 
 - The setup order for a repo that has never seen cww: docker reachable →
   `cww auth <agent>` → `cww init` → author `.cww/` → `cww create <ws>`.
-- The `.cww/` authoring rules (see [D1](#d1-where-the-cww-authoring-rules-live)),
+- The `.cww/` authoring rules (see [D1](#d1-where-the-cww-authoring-rules-live--extracted)),
   including the two cww-specific compose rules — container-port-only
   publishing, and `${HOME}/.cww/cache/...` mounts provisioned with
   `cww cache`.
@@ -189,7 +189,7 @@ dir is the agent's, not ours.
 - **`templates/skills/cww-host/SKILL.md`** — new. Rides the existing
   recursive `templates/` copy in `install.sh`.
 - **`install.sh`** — after the `docs/` copy, assemble
-  `templates/skills/cww-host/references/` from the three reference docs (the
+  `templates/skills/cww-host/references/` from the four reference docs (the
   container skill assembles its own at copy time; the host skill is consumed
   in place, so its references have to exist in the install dir). Add the hint
   line to the closing output.
@@ -244,6 +244,14 @@ read correctly through it, and `--copy` dereferences into real files. What is
 unverified is the loader on the other side. Confirm per agent by running
 `cww install-skill <agent>` and restarting it; if one skips symlinks,
 `--copy` becomes that agent's default rather than an option.
+
+**claude: confirmed 2026-08-22.** `~/.claude/skills/cww` is the symlink
+`cww install-skill claude` wrote, pointing into the install dir, and Claude
+Code loads the skill through it — its `description` appears in the session's
+skill list, which is the loader having read `SKILL.md` on the far side of the
+link. Symlinks are the right default for claude. **vibe, opencode, copilot and
+pi remain unverified**, so the question stays open and this plan stays
+`active`.
 
 ## Risks
 
