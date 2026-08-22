@@ -1,6 +1,5 @@
 // cww list — list all active Coder Workspace Workflow sessions.
 
-import os from "node:os";
 import path from "node:path";
 import { AGENT_VERSION_FILE, parseAgentVersion } from "../agents/registry";
 import {
@@ -31,7 +30,8 @@ build time); '*' marks a workspace whose image tag has been rebuilt since.
 Options:
   --versions     Also read each workspace's agent CLI version (one docker call
                  per running workspace, one per distinct stopped image)
-  --json         Output as JSON
+  --json         Output as JSON (carries every field the table omits, the
+                 workspace's branch and task dir among them)
   -h, --help     Show this help message
 `;
 
@@ -61,6 +61,9 @@ export interface SessionRow {
   // stamp is missing (an image built before it existed); absent entirely when
   // versions weren't asked for, or there is no container to read.
   version?: string | null;
+  // Not a table column: the path is derivable from project + workspace and
+  // only matters when you are about to open it, so it rides --json instead of
+  // widening every default listing. Also what getPortMap reads.
   taskDir: string;
   created: string;
 }
@@ -211,11 +214,6 @@ function isStale(image: WorkspaceImage | null): boolean {
   return !!image && (image.drifted || isOld(image));
 }
 
-function shortenHome(dir: string): string {
-  const home = os.homedir();
-  return dir === home || dir.startsWith(home + path.sep) ? `~${dir.slice(home.length)}` : dir;
-}
-
 // Color belongs to the value, not the column: status always carries one, IMAGE
 // only when it is worth acting on.
 interface Column {
@@ -243,7 +241,6 @@ function columnsFor(versions: boolean): Column[] {
       color: (r) => (isStale(r.image) ? YELLOW : null),
     },
     { header: "PORTS", cell: (r) => r.portsDisplay || "-" },
-    { header: "TASK DIR", cell: (r) => shortenHome(r.taskDir) },
   ];
 }
 

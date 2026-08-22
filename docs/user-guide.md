@@ -385,7 +385,7 @@ cww list --versions   # ... with each workspace's agent CLI version
 cww list --json       # JSON format
 ```
 
-`--json` carries more than the table shows: the workspace's `branch` and creation time, and an `image` object with the tag it was created from (`ref`), the image id it actually runs, that image's build time, `ageHours`, and `drifted`. Combined with `--versions` it also carries `version`.
+`--json` carries more than the table shows: the workspace's `branch`, its `taskDir` under `~/.cww/tasks/` (where the generated compose files live), its creation time, and an `image` object with the tag it was created from (`ref`), the image id it actually runs, that image's build time, `ageHours`, and `drifted`. Combined with `--versions` it also carries `version`.
 
 See [Agent CLI updates](agent-cli-updates.md) for how a workspace's CLI is frozen, refreshed, and reported.
 

@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import os from "node:os";
 import {
   DRIFT_LEGEND,
   formatImageCell,
@@ -46,12 +45,12 @@ function makeRow(overrides: Partial<SessionRow> = {}): SessionRow {
 describe("formatTable", () => {
   test("never truncates long values", () => {
     const ports = "80->32768,3000->32769,7900->32770,5432->32771";
-    const taskDir = "/very/long/path/to/tasks/cww-smoketest-testbun-linux";
-    const lines = formatTable([makeRow({ portsDisplay: ports, taskDir })]).map((l) =>
+    const workspace = "a-very-long-workspace-name-nobody-would-type-twice";
+    const lines = formatTable([makeRow({ portsDisplay: ports, workspace })]).map((l) =>
       l.replace(ANSI, ""),
     );
+    expect(lines[2]).toContain(workspace);
     expect(lines[2]).toContain(ports);
-    expect(lines[2]).toContain(taskDir);
   });
 
   test("columns auto-size and stay aligned across rows", () => {
@@ -75,18 +74,12 @@ describe("formatTable", () => {
     }
   });
 
-  test("shortens the home prefix of TASK DIR to ~", () => {
-    const taskDir = `${os.homedir()}/.cww/tasks/cww-smoketest-testbun-linux`;
-    const lines = formatTable([makeRow({ taskDir })]).map((l) => l.replace(ANSI, ""));
-    expect(lines[2]).toContain("~/.cww/tasks/cww-smoketest-testbun-linux");
-    expect(lines[2]).not.toContain(os.homedir());
-  });
-
   test("shows '-' for empty ports and 'error' for no-container", () => {
     const lines = formatTable([
       makeRow({ status: "no-container", portsDisplay: "" }),
     ]).map((l) => l.replace(ANSI, ""));
-    expect(lines[2]).toContain(" - ");
+    // PORTS is the last column, so its "-" ends the (right-trimmed) line.
+    expect(lines[2]).toMatch(/\s-$/);
     expect(lines[2]).toContain("error");
   });
 
