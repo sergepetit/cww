@@ -3,7 +3,7 @@ type: guide
 title: Documentation Conventions
 description: Frontmatter schema and the controlled type and status vocabularies for this repo's Markdown docs, and our take on OKF for project documentation
 created: 2026-07-09
-convention-version: 2
+convention-version: 3
 ---
 
 # Documentation Conventions
@@ -53,11 +53,15 @@ Rules:
 | `guide` | How-to / setup / conventions reference for contributors. |
 | `reference` | Stable technical reference (architecture, product spec, structured lists). |
 | `audit` | A point-in-time review/assessment of the codebase or a subsystem. |
-| `log` | A running, append-mostly record (e.g. a code-review log). |
+| `log` | A running, append-mostly record that gets drained (a code-review log, the backlog). |
 | `exploration` | Research, comparisons, or idea collections that aren't committed plans. |
 | `pitch` | Sales/investor/marketing-facing material. |
 | `readme` | Entry-point README for a component or directory. |
 | `tombstone` | A pointer doc for a removed feature, redirecting to current docs. |
+
+**`log` vs `exploration`** is decided on mechanics, not subject matter. A `log` is appended to *and drained*: entries leave when done, or graduate into a `plan` doc. An `exploration` is written once and read later; nothing is removed from it. A running list of deferred gaps is therefore a `log`, even though it reads like an idea collection.
+
+**The backlog.** This repo's running list of deferred gaps and improvements is one doc, `docs/backlog.md`, `type: log` — that name, not `TODO.md` or `IDEAS.md`, so it's findable without grepping. It exists once there's something to put in it. An entry records what's wrong, the evidence that motivated it, and what a fix would look like — enough that picking it up later doesn't mean re-deriving it. If an entry grows past that, it becomes its own `plan` doc and leaves the backlog.
 
 ## The `status` vocabulary
 
