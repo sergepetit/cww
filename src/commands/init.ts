@@ -53,7 +53,7 @@ Options:
 
 Examples:
   cww init                       # From within the repo
-  cww init --remote forge       # Clone URL from a non-origin remote
+  cww init --remote forge        # Clone URL from a non-origin remote
   cww init /path/to/repo         # Explicit path
 `;
 

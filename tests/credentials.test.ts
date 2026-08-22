@@ -52,12 +52,8 @@ describe("matchCredential", () => {
   );
 
   test("per-repo entry beats host-wide, .git and trailing slash ignored", () => {
-    expect(matchCredential(entries, "https://forgejo.example/dev/api.git")?.user).toBe(
-      "per-repo",
-    );
-    expect(matchCredential(entries, "https://forgejo.example/dev/api/")?.user).toBe(
-      "per-repo",
-    );
+    expect(matchCredential(entries, "https://forgejo.example/dev/api.git")?.user).toBe("per-repo");
+    expect(matchCredential(entries, "https://forgejo.example/dev/api/")?.user).toBe("per-repo");
   });
 
   test("host-wide entry covers other repos on the same origin", () => {
