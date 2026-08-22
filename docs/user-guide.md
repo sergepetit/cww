@@ -279,7 +279,7 @@ cww shell feature-auth    # By workspace name
 cww shell                 # From the repo directory (single workspace)
 ```
 
-**Already attached to the agent?** You don't need a separate terminal for `cww shell` — split a tmux pane instead (`Ctrl-a |` or `Ctrl-a -`) to get a shell right beside the agent, in the same container and at `/workspace`. See [tmux keys](#tmux-keys) for the pane bindings, and [Copying text with the mouse](#copying-text-with-the-mouse) for pulling command output into your system clipboard (on Mac Terminal.app, hold **Fn** while selecting).
+**Already attached to the agent?** You don't need a separate terminal for `cww shell` — split a tmux pane instead (`Ctrl-a |` or `Ctrl-a -`) to get a shell right beside the agent, in the same container and at `/workspace`. See [tmux keys](#tmux-keys) for the pane bindings, and [Copying text with the mouse](#copying-text-with-the-mouse) for pulling command output into your system clipboard (a drag copies it outright on an OSC 52 terminal; on Mac Terminal.app, hold **Fn** while selecting).
 
 Every workspace command below accepts the same argless form: run from inside the project repo, it resolves the repo's workspace automatically — but only when the repo has **exactly one**. With several workspaces for the same repo the argless form refuses as ambiguous; pass the workspace name.
 
@@ -292,7 +292,7 @@ cww attach feature-auth    # By workspace name
 cww attach                 # From the repo directory (single workspace)
 ```
 
-**Need a shell alongside the agent?** You don't have to leave the session — split a tmux pane (`Ctrl-a |` or `Ctrl-a -`) for a shell in the same container at `/workspace`, instead of a separate [`cww shell`](#cww-shell-workspace-name). See [tmux keys](#tmux-keys) for the pane bindings, and [Copying text with the mouse](#copying-text-with-the-mouse) for pulling output into your system clipboard (on Mac Terminal.app, hold **Fn** while selecting).
+**Need a shell alongside the agent?** You don't have to leave the session — split a tmux pane (`Ctrl-a |` or `Ctrl-a -`) for a shell in the same container at `/workspace`, instead of a separate [`cww shell`](#cww-shell-workspace-name). See [tmux keys](#tmux-keys) for the pane bindings, and [Copying text with the mouse](#copying-text-with-the-mouse) for pulling output into your system clipboard (a drag copies it outright on an OSC 52 terminal; on Mac Terminal.app, hold **Fn** while selecting).
 
 ### `cww start [workspace-name]`
 
@@ -475,22 +475,38 @@ The container uses tmux with these key bindings:
 | `Ctrl-a -` | Split pane vertically |
 | `Ctrl-a h/j/k/l` | Navigate panes (vim-style) |
 | `Ctrl-a r` | Reload tmux config |
+| `Ctrl-a m` | Toggle the mouse off/on (see below) |
+| `Ctrl-a [` | Enter copy mode — scroll the 50k-line history, `v`/`y` to select and copy, `q` to leave |
+| `Ctrl-a ]` | Paste what you last copied |
 
 ### Copying text with the mouse
 
-tmux has `mouse on`, so a normal click-drag is captured by tmux (it selects into
-tmux's own buffer and clears the highlight on release) — the text never reaches
-your system clipboard. To copy to the clipboard, bypass tmux's mouse handling
-with your terminal's modifier key.
+tmux has `mouse on`, so it captures click-drag and the wheel: the wheel scrolls
+tmux's own scrollback, and a drag-release copies the selection into tmux's paste
+buffer, which `Ctrl-a ]` pastes back anywhere in the workspace.
 
-If you're on a **Mac using the default Terminal.app**, that modifier is **Fn**:
+**Whether that also reaches your desktop clipboard depends on your terminal.**
+tmux has nothing to shell out to inside the container — there is no `pbcopy` in
+a Linux container, and the X display the [built-in browser](#built-in-headful-browser)
+runs on is a different clipboard from your desktop's. So the config sets
+`set-clipboard on`, which emits an **OSC 52** escape asking the terminal to set
+the clipboard on tmux's behalf:
 
-- **Fn + click-drag** — selects text natively; then **⌘C** copies it.
-- **Fn + right-click** — brings up the terminal's own copy menu.
+- **Terminals that implement OSC 52** — iTerm2, Ghostty, WezTerm, kitty — put
+  the drag straight onto your system clipboard. Nothing to hold, nothing to
+  configure, and it works through `docker exec`. iTerm2 needs *Applications in
+  terminal may access clipboard* enabled in its settings.
+- **Mac Terminal.app does not implement OSC 52** and silently drops the escape.
+  The selection is still in tmux's buffer for `Ctrl-a ]`, but to get it onto the
+  macOS clipboard you have to bypass tmux's mouse handling: hold **Fn** while
+  click-dragging, then **⌘C**. **Fn + right-click** gives the terminal's own
+  copy menu. (Many Linux terminals use **Shift** for the same bypass.)
 
-Other setups use a different modifier — e.g. **iTerm2** uses **⌥ Option**, and
-many Linux terminals use **Shift**. If plain drag doesn't let you copy, check
-which modifier your terminal uses to bypass application mouse reporting.
+If holding a modifier every time gets old, **`Ctrl-a m` toggles the mouse off**.
+With it off, click-drag and the wheel go to the terminal instead of tmux, so you
+get your terminal's native selection and native scrollback with nothing held
+down — at the cost of tmux's own scrollback and pane-aware selection. Toggle it
+back on the same way.
 
 ## Project-specific services
 

@@ -149,11 +149,19 @@ fi
 # in an empty workspace is useless, and the developer needs the error first.
 # (The marker persists across restarts until a boot clones successfully, so
 # reattaching to a broken workspace lands on the log too.)
+#
+# -f ignore-size on every new-session here: this client is PID 1's foreground
+# process, it exists only to keep the container alive, and nobody ever looks at
+# it — but it stays attached for the container's whole life at the pty's default
+# 80x24. Without the flag tmux counts it when sizing the window, so under the
+# default 'window-size latest' it reflows the agent's pane to 80x24 whenever it
+# happens to be the most recent client, garbling the UI of whoever is actually
+# attached. Flagged, tmux sizes to the real clients only.
 if [ $# -eq 0 ]; then
     if [ -f "$SETUP_FAILED_MARKER" ]; then
         # -X keeps the log in the terminal scrollback after q — the developer
         # usually wants to copy the error out.
-        exec tmux new-session -A -s "$SESSION_NAME" -c /workspace \
+        exec tmux new-session -A -f ignore-size -s "$SESSION_NAME" -c /workspace \
             "less -X /workspace/cww.log; exec bash -l"
     fi
     if [ -z "$CWW_AGENT_CMD" ]; then
@@ -161,7 +169,7 @@ if [ $# -eq 0 ]; then
         echo "[cww] build and run a per-agent image instead ('cww build <agent>')." >&2
         exit 1
     fi
-    exec tmux new-session -A -s "$SESSION_NAME" -c /workspace "$CWW_AGENT_CMD"
+    exec tmux new-session -A -f ignore-size -s "$SESSION_NAME" -c /workspace "$CWW_AGENT_CMD"
 fi
 
 # Otherwise execute the provided command
