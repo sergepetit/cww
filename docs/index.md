@@ -12,6 +12,7 @@ description: Master index of the project's authored documentation
 - [accessing-services.md](accessing-services.md) — How to reach a workspace's services from a browser — port publishing, why plain-http LAN origins break secure contexts, and SSH-forwarding to one fixed localhost origin
 - [git-strategy.md](git-strategy.md) — The two git mechanics cww owns — clone-in-container and the developer's own scoped credential — plus attribution and example workflows
 - [cww-project-config.md](cww-project-config.md) — What each file in a repo's .cww/ folder does, the host-side env layers that sit outside it, and how a change to either takes effect — the shared reference for configuring a project, from the host or from inside a workspace
+- [CHANGELOG.md](../CHANGELOG.md) — Release history, with upgrade steps for each version
 - [agent-cli-updates.md](agent-cli-updates.md) — How an agent CLI gets into a workspace and how it is updated — images freeze the CLI, 'cww build' re-resolves it, and existing workspaces need a recreate, with the evidence for why each piece exists
 
 ## Plans
