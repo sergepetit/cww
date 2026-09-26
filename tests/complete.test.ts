@@ -27,7 +27,7 @@ describe("agents topic", () => {
   // Through the real CLI entry, so the __complete routing is covered too.
   test("prints the registered agents, one per line", () => {
     const cli = path.join(import.meta.dir, "..", "src", "cli.ts");
-    const r = Bun.spawnSync({ cmd: ["bun", cli, "__complete", "agents"], stdout: "pipe" });
+    const r = Bun.spawnSync({ cmd: [process.execPath, cli, "__complete", "agents"], stdout: "pipe" });
     expect(r.exitCode).toBe(0);
     expect(new TextDecoder().decode(r.stdout).trim().split("\n")).toEqual([...CWW_AGENTS]);
   });
@@ -37,14 +37,14 @@ describe("auth topics", () => {
   const cli = path.join(import.meta.dir, "..", "src", "cli.ts");
 
   test("auth-targets lists the agents plus 'git'", () => {
-    const r = Bun.spawnSync({ cmd: ["bun", cli, "__complete", "auth-targets"], stdout: "pipe" });
+    const r = Bun.spawnSync({ cmd: [process.execPath, cli, "__complete", "auth-targets"], stdout: "pipe" });
     expect(r.exitCode).toBe(0);
     expect(new TextDecoder().decode(r.stdout).trim().split("\n")).toEqual([...CWW_AGENTS, "git"]);
   });
 
   test("auth-methods lists an agent's method ids", () => {
     const r = Bun.spawnSync({
-      cmd: ["bun", cli, "__complete", "auth-methods", "claude"],
+      cmd: [process.execPath, cli, "__complete", "auth-methods", "claude"],
       stdout: "pipe",
     });
     expect(r.exitCode).toBe(0);
@@ -57,7 +57,7 @@ describe("auth topics", () => {
 
   test("auth-methods-all is the deduplicated union of every agent's method ids", () => {
     const r = Bun.spawnSync({
-      cmd: ["bun", cli, "__complete", "auth-methods-all"],
+      cmd: [process.execPath, cli, "__complete", "auth-methods-all"],
       stdout: "pipe",
     });
     expect(r.exitCode).toBe(0);
@@ -70,7 +70,7 @@ describe("auth topics", () => {
 
   test("auth-methods without a known agent yields no candidates", () => {
     const r = Bun.spawnSync({
-      cmd: ["bun", cli, "__complete", "auth-methods", "nope"],
+      cmd: [process.execPath, cli, "__complete", "auth-methods", "nope"],
       stdout: "pipe",
     });
     expect(r.exitCode).toBe(1);

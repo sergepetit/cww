@@ -44,7 +44,9 @@ chmod 600 ~/.cww/env
 
 For Mistral Vibe, set `MISTRAL_API_KEY=...` instead; for OpenCode, a provider API key such as `ANTHROPIC_API_KEY`; for GitHub Copilot, a `COPILOT_GITHUB_TOKEN` — or no token at all with its BYOK methods against a local OpenAI-compatible endpoint (see [Choosing an agent](#choosing-an-agent)); for Pi, a provider API key such as `ANTHROPIC_API_KEY` (the same variables as OpenCode). Each workspace receives only the credential of the **auth method** it is created with (`cww create --auth <method>`, asked once per project when nothing decides it) — keys stored for one agent are invisible to workspaces of another. The Claude token lasts a year; renew any agent token later with `cww auth` — existing workspaces pick the new value up on their next start ([details](docs/user-guide.md#renewing-a-token)).
 
-The installer also sets up tab completion (bash and zsh) for commands, flags, and workspace names — open a new shell to pick it up.
+**On Windows**, cww runs natively from PowerShell against Rancher Desktop (dockerd engine) or Docker Desktop: clone, then `powershell -ExecutionPolicy Bypass -File .\install.ps1`. It checks for Git, Bun and the engine, and says where to get any that are missing (Bun installs with `npm install -g bun`). See [Windows](docs/user-guide.md#windows-powershell).
+
+The installer also sets up tab completion (bash and zsh; PowerShell on Windows) for commands, flags, and workspace names — open a new shell to pick it up.
 
 Full setup notes — self-hosted git hosts, token scoping, per-project overrides, and defining your app's services (Postgres, Redis, …) via `.cww/docker-compose.services.yml` — are in the User Guide: [authentication](docs/user-guide.md#authentication-setup) and [project services](docs/user-guide.md#project-specific-services).
 

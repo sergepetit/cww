@@ -20,6 +20,7 @@ import {
 } from "../agents/registry";
 import { resolveAgent } from "../agents/registry";
 import { loadEnvFile } from "../lib/env";
+import { sameHostPath } from "../lib/paths";
 import { skillEntryPlan, tilde, writeSkillEntry } from "../lib/skill-link";
 import { die, info, success, warn } from "../lib/ui";
 import { parseCommandArgs } from "./common";
@@ -131,7 +132,7 @@ function remove(target: InstallTarget, source: string): boolean {
   } catch {
     resolved = null;
   }
-  if (resolved && resolved !== fs.realpathSync(source)) {
+  if (resolved && !sameHostPath(resolved, fs.realpathSync(source))) {
     warn(`${agentLabel(target.agent)}: ${tilde(target.entry)} links somewhere else — leaving it alone.`);
     return false;
   }

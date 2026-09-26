@@ -28,6 +28,7 @@ description: Master index of the project's authored documentation
 - [copilot-agent-plan.md](copilot-agent-plan.md) — Add GitHub Copilot CLI as a fourth agent, including its BYOK mode so a workspace can run against a third-party OpenAI-compatible endpoint (e.g. a LAN llama.cpp server) *(done)*
 - [pi-agent-plan.md](pi-agent-plan.md) — Add Pi (pi.dev) as a fifth agent — a provider-agnostic Node CLI that maps almost 1:1 onto the OpenCode agent, minus the in-workspace browser (Pi has no MCP) *(active)*
 - [services-env-layers-plan.md](services-env-layers-plan.md) — Keep ~/.cww/services.env as the machine-wide pass-through and add two narrower host-side layers above it, so a value can be scoped to one project or one workspace without being committed *(done)*
+- [windows-support-plan.md](windows-support-plan.md) — Run the cww CLI natively on Windows from PowerShell or cmd against Rancher Desktop (dockerd) or Docker Desktop — the POSIX assumptions removed from the host CLI, install.ps1 and PowerShell completion, and what was verified where *(active)*
 
 ## Backlog
 

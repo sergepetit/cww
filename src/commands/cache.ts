@@ -24,6 +24,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { provisionCacheDir } from "../lib/cache-dir";
+import { isWindows } from "../lib/paths";
 import { die, info, success, warn } from "../lib/ui";
 import { parseCommandArgs } from "./common";
 
@@ -110,8 +111,19 @@ export async function runCache(argv: string[]): Promise<void> {
   if (from) {
     if (fs.statSync(from, { throwIfNoEntry: false })?.isDirectory()) {
       info(`Priming from ${from} ...`);
-      const r = await $`cp -a ${from}/. ${hostDir}/`.quiet().nothrow();
-      if (r.exitCode !== 0) warn("Priming copy hit some unreadable files; continuing.");
+      // cp -a copies past unreadable files; fs.cpSync (Windows has no cp)
+      // stops at the first one, leaving a partial prime.
+      let copied = true;
+      if (isWindows()) {
+        try {
+          fs.cpSync(from, hostDir, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
+        } catch {
+          copied = false;
+        }
+      } else {
+        copied = (await $`cp -a ${from}/. ${hostDir}/`.quiet().nothrow()).exitCode === 0;
+      }
+      if (!copied) warn("Priming copy hit some unreadable files; continuing.");
     } else {
       warn(`--from '${from}' is not a directory; skipping prime.`);
     }

@@ -68,7 +68,7 @@ function skillDescription(skillDir: string): string {
   } catch {
     return "";
   }
-  const block = text.match(/^---\n([\s\S]*?)\n---\n/);
+  const block = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   const line = block?.[1]?.match(/^description:\s*(.*)$/m);
   return line?.[1]?.trim() ?? "";
 }

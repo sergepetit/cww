@@ -1,6 +1,7 @@
 // Host-side git queries.
 
 import { $ } from "bun";
+import path from "node:path";
 
 export async function isGitRepo(dir: string): Promise<boolean> {
   const r = await $`git -C ${dir} rev-parse --git-dir`.quiet().nothrow();
@@ -8,9 +9,11 @@ export async function isGitRepo(dir: string): Promise<boolean> {
 }
 
 // Root of the git repository containing dir, or null when outside a repo.
+// Resolved so it is spelled like other host paths (git for Windows prints
+// 'C:/Users/x/repo', node uses backslashes).
 export async function getGitRoot(dir: string): Promise<string | null> {
   const r = await $`git -C ${dir} rev-parse --show-toplevel`.quiet().nothrow();
-  return r.exitCode === 0 ? r.text().trim() : null;
+  return r.exitCode === 0 ? path.resolve(r.text().trim()) : null;
 }
 
 export async function branchExists(repoPath: string, branch: string): Promise<boolean> {

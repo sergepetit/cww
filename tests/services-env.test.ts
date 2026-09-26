@@ -13,18 +13,18 @@ describe("services env layers", () => {
   const home = "/home/dev";
 
   test("the three layers resolve to their documented paths", () => {
-    expect(globalServicesEnvFile(home)).toBe("/home/dev/.cww/services.env");
-    expect(projectServicesEnvFile("api", home)).toBe("/home/dev/.cww/services/api.env");
+    expect(globalServicesEnvFile(home)).toBe(path.normalize("/home/dev/.cww/services.env"));
+    expect(projectServicesEnvFile("api", home)).toBe(path.normalize("/home/dev/.cww/services/api.env"));
     expect(workspaceServicesEnvFile("api", "sandbox", home)).toBe(
-      "/home/dev/.cww/services/api/sandbox.env",
+      path.normalize("/home/dev/.cww/services/api/sandbox.env"),
     );
   });
 
   test("names are sanitized like container and task names are", () => {
     // A user types 'MyProject' and 'Feature/Auth'; the file has one spelling.
-    expect(projectServicesEnvFile("MyProject", home)).toBe("/home/dev/.cww/services/myproject.env");
+    expect(projectServicesEnvFile("MyProject", home)).toBe(path.normalize("/home/dev/.cww/services/myproject.env"));
     expect(workspaceServicesEnvFile("MyProject", "Feature/Auth", home)).toBe(
-      "/home/dev/.cww/services/myproject/feature-auth.env",
+      path.normalize("/home/dev/.cww/services/myproject/feature-auth.env"),
     );
   });
 
@@ -32,9 +32,9 @@ describe("services env layers", () => {
     // The order is the precedence rule: 'cww create' renders it straight into
     // the compose env_file list, where a later entry wins.
     expect(servicesEnvFiles("api", "sandbox", home)).toEqual([
-      "/home/dev/.cww/services.env",
-      "/home/dev/.cww/services/api.env",
-      "/home/dev/.cww/services/api/sandbox.env",
+      path.normalize("/home/dev/.cww/services.env"),
+      path.normalize("/home/dev/.cww/services/api.env"),
+      path.normalize("/home/dev/.cww/services/api/sandbox.env"),
     ]);
   });
 

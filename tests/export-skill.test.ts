@@ -45,9 +45,9 @@ function projectDir(): string {
 
 describe("agentHostSkillsDir", () => {
   test("expands ~ against the given home for every agent", () => {
-    expect(agentHostSkillsDir("claude", "/h")).toBe("/h/.claude/skills");
-    expect(agentHostSkillsDir("vibe", "/h")).toBe("/h/.vibe/skills");
-    expect(agentHostSkillsDir("opencode", "/h")).toBe("/h/.config/opencode/skills");
+    expect(agentHostSkillsDir("claude", "/h")).toBe(path.resolve("/h/.claude/skills"));
+    expect(agentHostSkillsDir("vibe", "/h")).toBe(path.resolve("/h/.vibe/skills"));
+    expect(agentHostSkillsDir("opencode", "/h")).toBe(path.resolve("/h/.config/opencode/skills"));
   });
 
   test("skills-supporting agents declare a host dir; a skill-less agent declares none", () => {
@@ -97,6 +97,13 @@ describe("listHostSkills", () => {
         description: "Test skill review",
       },
     ]);
+  });
+
+  test("reads the description from a CRLF SKILL.md (a Windows checkout)", () => {
+    const home = homeWith({ claude: ["deploy"] });
+    const file = path.join(home, ".claude", "skills", "deploy", "SKILL.md");
+    fs.writeFileSync(file, "---\r\nname: deploy\r\ndescription: Ships it\r\n---\r\n\r\n# deploy\r\n");
+    expect(listHostSkills(home)[0]?.description).toBe("Ships it");
   });
 
   test("ignores folders without a SKILL.md and missing config dirs", () => {

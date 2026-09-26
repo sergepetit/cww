@@ -2,6 +2,7 @@
 // ports to another machine's localhost.
 
 import { $ } from "bun";
+import os from "node:os";
 import { getPortMap, type PortBinding } from "../lib/docker";
 import { warn } from "../lib/ui";
 import { parseCommandArgs, requireWorkspace } from "./common";
@@ -25,7 +26,7 @@ Options:
 Examples:
   cww tunnel-command sandbox
   cww tunnel-command sandbox --host me@dev-box.internal
-  cww tunnel-command sandbox --terse | pbcopy
+  cww tunnel-command sandbox --terse | pbcopy        # macOS; Set-Clipboard on Windows
 `;
 
 export interface TunnelSpec {
@@ -73,12 +74,11 @@ export async function runTunnelCommand(argv: string[]): Promise<void> {
   const ws = await requireWorkspace(name, USAGE);
 
   // Default SSH target is this machine (the one running cww). `hostname -f`
-  // for the FQDN, plain `hostname` where -f is unsupported.
+  // for the FQDN; the plain host name where -f is unsupported (Windows).
   if (!sshHost) {
     const fqdn = await $`hostname -f`.quiet().nothrow();
-    const host =
-      fqdn.exitCode === 0 ? fqdn.text().trim() : (await $`hostname`.quiet()).text().trim();
-    sshHost = `${process.env.USER}@${host}`;
+    const host = fqdn.exitCode === 0 ? fqdn.text().trim() : os.hostname();
+    sshHost = `${process.env.USER ?? process.env.USERNAME}@${host}`;
   }
 
   // container->host port map across the task's compose stack (empty unless

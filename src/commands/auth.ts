@@ -22,7 +22,7 @@ import { loadCredentials, matchCredential } from "../lib/credentials";
 import { containerRunning } from "../lib/docker";
 import { loadEnvFile } from "../lib/env";
 import { getGitRoot, isGitRepo } from "../lib/git";
-import { resolveProjectPath } from "../lib/paths";
+import { resolveProjectPath, sameHostPath } from "../lib/paths";
 import { findAllSessions, readSessionFile, type Session } from "../lib/session";
 import { setupRepo } from "../lib/setup";
 import { die, info, promptChoice, warn } from "../lib/ui";
@@ -138,7 +138,7 @@ async function authGit(): Promise<void> {
     die(`Not a git repository: ${projectPath} — run 'cww auth git' inside the repo.`);
   }
   const gitRoot = await getGitRoot(projectPath);
-  if (gitRoot && gitRoot !== projectPath) {
+  if (gitRoot && !sameHostPath(gitRoot, projectPath)) {
     info(`Using git root: ${gitRoot}`);
     projectPath = gitRoot;
   }

@@ -2,7 +2,7 @@
 type: guide
 title: cww User Guide
 description: Full user documentation — installation, authentication, every command, the Docker image, project services, the built-in browser, configuration, and troubleshooting
-timestamp: 2026-07-28
+timestamp: 2026-09-25
 ---
 
 # cww User Guide
@@ -47,6 +47,42 @@ On Linux, run cww on [rootless Docker](https://docs.docker.com/engine/security/r
 The default flow needs no special configuration: cww drives Docker through the `docker` CLI (inheriting your rootless context / `DOCKER_HOST`), the agent container publishes no host ports, and services use the container-port-only form so Docker assigns high, unprivileged host ports.
 
 The one wrinkle is the opt-in [dependency-cache mounts](#dependency-caches-opt-in): under rootless a host cache dir appears **root-owned inside the container**, so the non-root `developer` user can't write it and `npm install` fails with `EACCES`. Use [`cww cache`](#cww-cache-preset--name-container-path) to provision the cache dir — it sets the ownership `developer` needs. (This isn't unique to rootless; the in-container `developer` UID never matches your host user, so `cww cache` handles both modes.)
+
+### Windows (PowerShell)
+
+cww runs natively on Windows 10/11 from PowerShell (Windows PowerShell 5.1 or PowerShell 7) or cmd. It drives whatever the `docker` CLI and `docker compose` point at. That can be **Rancher Desktop** with the **dockerd (moby)** container engine (the containerd/nerdctl engine is not supported: cww needs the docker CLI) or **Docker Desktop**. Both run the Linux containers in WSL2.
+
+**Prerequisites.** The installer checks for each of these and, when one is missing, tells you where to get it:
+
+| Tool | Install with |
+|---|---|
+| Git | `winget install --id Git.Git -e`, or [git-scm.com](https://git-scm.com/download/win) |
+| Bun | `npm install -g bun` (with Node.js), `winget install --id Oven-sh.Bun -e`, or `powershell -c "irm bun.sh/install.ps1 \| iex"` |
+| Container engine | [Rancher Desktop](https://rancherdesktop.io) (choose dockerd/moby) or [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
+
+**Install:**
+
+```powershell
+git clone https://github.com/sergepetit/cww.git
+cd cww
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+`install.ps1` does the following:
+- copies the files to `%LOCALAPPDATA%\coder-workspace-workflow\`
+- creates the launcher `bin\cww.cmd` there and adds that folder to your user PATH
+- builds the image, or skips the build if the engine isn't running, so run `cww build` later
+- registers tab completion in your PowerShell profile(s).
+
+Open a new terminal afterwards.
+
+**Differences from macOS/Linux:**
+- **Where things live.** `~/.cww` is `%USERPROFILE%\.cww`. It holds the same files as on other platforms: `env`, `credentials`, `config.json`, `tasks\`, `cache\`. POSIX file modes don't exist on Windows, so the secrets files are protected by your user profile's ACL, which by default is readable only by you and administrators.
+- **Terminal.** Attach and `cww shell` need a console with ConPTY: Windows Terminal, or the PowerShell/cmd console. Git Bash (mintty) is not supported for attaching.
+- **Completion.** PowerShell only loads a profile if its execution policy allows it. If completion doesn't work, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. Flags complete once you type a letter after the dashes (`--a<TAB>`): Windows PowerShell never asks a completer about a bare `-` or `--`.
+- **`cww cp`.** A drive path like `C:\notes.txt` is always a host path. Workspace paths keep the `<workspace>:<path>` form. Files copied in from Windows arrive as mode 755, because NTFS has no execute bit.
+- **Skill links.** `cww export-skill` and `cww install-skill` create directory **junctions** instead of symlinks, so they need neither admin rights nor Developer Mode.
+- **Cache mounts.** `${HOME}/.cww/cache/...` in `.cww/docker-compose.services.yml` works as-is, because cww sets `HOME` for compose when your shell doesn't. The ownership step of `cww cache` doesn't apply to Windows folders, which containers can always write.
 
 ## Authentication setup
 

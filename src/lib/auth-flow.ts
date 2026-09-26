@@ -112,9 +112,11 @@ export async function promptStoreMethodSecret(agent: Agent, method: AgentAuthMet
   if (method.instructions) {
     for (const line of method.instructions.split("\n")) console.log(`  ${line}`);
   }
-  if (method.setupCommand?.length && process.stdin.isTTY && Bun.which(method.setupCommand[0]!)) {
+  const setupExe = method.setupCommand?.length ? Bun.which(method.setupCommand[0]!) : null;
+  if (method.setupCommand?.length && process.stdin.isTTY && setupExe) {
     if (confirm(`Run '${method.setupCommand.join(" ")}' now?`)) {
-      const proc = Bun.spawn([...method.setupCommand], {
+      // The resolved path, so a Windows '.cmd' shim (npm-installed CLIs) is found.
+      const proc = Bun.spawn([setupExe, ...method.setupCommand.slice(1)], {
         stdio: ["inherit", "inherit", "inherit"],
       });
       const code = await proc.exited;

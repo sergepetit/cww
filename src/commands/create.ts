@@ -38,7 +38,7 @@ import { setupRepo } from "../lib/setup";
 import { getProjectConfig, setProjectConfig } from "../lib/user-config";
 import { containerHostname, getContainerName, getTaskDir, normalizeGitUrl } from "../lib/naming";
 import { resolveWorkspaceImage } from "../lib/project-image";
-import { resolveProjectPath } from "../lib/paths";
+import { resolveProjectPath, sameHostPath } from "../lib/paths";
 import { readSession, writeSession } from "../lib/session";
 import { confirm, die, error, info, success, warn } from "../lib/ui";
 import { startTaskStack } from "../lib/workspace";
@@ -513,7 +513,7 @@ export async function runCreate(argv: string[]): Promise<void> {
         if (!workspaceName && !projectArg) {
           // First positional: a path (dir / "." / absolute) is the project;
           // anything else is the workspace name.
-          if (arg === "." || arg.startsWith("/") || fs.existsSync(arg)) {
+          if (arg === "." || path.isAbsolute(arg) || fs.existsSync(arg)) {
             projectArg = arg;
           } else {
             workspaceName = arg;
@@ -542,7 +542,7 @@ export async function runCreate(argv: string[]): Promise<void> {
 
   // Get the actual git root (in case we're in a subdirectory).
   const gitRoot = await getGitRoot(projectPath);
-  if (gitRoot && gitRoot !== projectPath) {
+  if (gitRoot && !sameHostPath(gitRoot, projectPath)) {
     info(`Using git root: ${gitRoot}`);
     projectPath = gitRoot;
     projectName = path.basename(projectPath);

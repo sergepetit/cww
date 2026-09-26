@@ -2,6 +2,7 @@
 // cww - Coder Workspace Workflow CLI. Sole entry point: the installed `cww`
 // launcher execs `bun src/cli.ts "$@"` (see install.sh).
 
+import os from "node:os";
 import { die } from "./lib/ui";
 import { runAttach } from "./commands/attach";
 import { runAuth } from "./commands/auth";
@@ -87,6 +88,11 @@ function versionAtLeast(version: string, min: string): boolean {
 if (!versionAtLeast(Bun.version, MIN_BUN_VERSION)) {
   die(`cww needs Bun >= ${MIN_BUN_VERSION} (found ${Bun.version}). Upgrade with: bun upgrade`);
 }
+
+// Compose files mount caches as '${HOME}/.cww/cache/...'. PowerShell and cmd
+// don't set HOME, so give docker compose (and any other child) the home cww
+// itself uses.
+process.env.HOME ??= os.homedir();
 
 const [command, ...rest] = process.argv.slice(2);
 

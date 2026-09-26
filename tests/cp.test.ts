@@ -91,4 +91,15 @@ describe("parseCpArgs", () => {
   test("a path separator before the colon means a host path", () => {
     expect(() => parseCpArgs(["dir/with:colon", "other.txt"])).toThrow(/<workspace>:<path>/);
   });
+
+  test("on Windows a drive path is a host path, not workspace 'C'", () => {
+    const push = parseCpArgs(["C:\\tmp\\f.txt", "ws:/tmp/"], "win32");
+    expect(push).toEqual({ direction: "push", workspace: "ws", sources: ["C:\\tmp\\f.txt"], dest: "/tmp/" });
+    const pull = parseCpArgs(["ws:out.log", "D:/logs/"], "win32");
+    expect(pull).toEqual({ direction: "pull", workspace: "ws", sources: ["/workspace/out.log"], dest: "D:/logs/" });
+  });
+
+  test("elsewhere a one-letter name is still a workspace", () => {
+    expect(parseCpArgs(["C:f.txt", "."], "darwin").workspace).toBe("C");
+  });
 });

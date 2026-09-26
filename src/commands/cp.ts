@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { copyFromContainer, copyIntoContainer } from "../lib/container-fs";
 import { containerRunning } from "../lib/docker";
+import { isDrivePath } from "../lib/paths";
 import { die, error, success } from "../lib/ui";
 import { parseCommandArgs, resolveContainerLoosely } from "./common";
 
@@ -36,7 +37,8 @@ Examples:
 
 // 'name:path' with a plausible workspace name (or empty = auto-detect). A '/'
 // before the ':' means a host path that merely contains a colon — the same
-// './' escape convention as scp.
+// './' escape convention as scp. On Windows a drive path ('C:\x', 'C:/x') is
+// always a host path.
 const REMOTE_RE = /^([A-Za-z0-9._-]*):(.*)$/;
 
 export type CpPlan = {
@@ -58,14 +60,14 @@ export function resolveContainerPath(p: string): string {
 }
 
 // Pure argument planner (throws on invalid combinations, no I/O).
-export function parseCpArgs(positionals: string[]): CpPlan {
+export function parseCpArgs(positionals: string[], platform: NodeJS.Platform = process.platform): CpPlan {
   if (positionals.length < 2) {
     throw new Error("cww cp needs at least a source and a destination.");
   }
   const sources = positionals.slice(0, -1);
   const dest = positionals[positionals.length - 1]!;
 
-  const remote = (arg: string) => REMOTE_RE.exec(arg);
+  const remote = (arg: string) => (isDrivePath(arg, platform) ? null : REMOTE_RE.exec(arg));
   const destRemote = remote(dest);
   const remoteSources = sources.map(remote);
   const remoteSourceCount = remoteSources.filter(Boolean).length;

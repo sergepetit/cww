@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getTasksRoot } from "./naming";
 import { getGitRoot } from "./git";
+import { sameHostPath } from "./paths";
 
 export interface Session {
   project?: string;
@@ -87,7 +88,7 @@ export function findRepoWorkspaces(root: string): WorkspaceRef[] {
   const refs: WorkspaceRef[] = [];
   for (const file of findAllSessions()) {
     const session = readSessionFileSafe(file);
-    if (session.mainRepo !== root) continue;
+    if (!session.mainRepo || !sameHostPath(session.mainRepo, root)) continue;
     refs.push({
       taskDir: path.dirname(file),
       session,
@@ -112,6 +113,9 @@ export async function resolveSessionFile(workspace?: string): Promise<string | n
   // No workspace given: match tasks whose mainRepo is the current git root.
   const root = await getGitRoot(process.cwd());
   if (!root) return null;
-  const matches = files.filter((f) => readSessionFileSafe(f).mainRepo === root);
+  const matches = files.filter((f) => {
+    const mainRepo = readSessionFileSafe(f).mainRepo;
+    return mainRepo !== undefined && sameHostPath(mainRepo, root);
+  });
   return matches.length === 1 ? matches[0]! : null;
 }

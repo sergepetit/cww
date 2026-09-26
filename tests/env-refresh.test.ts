@@ -123,7 +123,8 @@ describe("writeTaskEnv", () => {
     writeTaskEnv(dir, REPO_URL, { CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-x" });
     const file = path.join(dir, "env");
     expect(fs.readFileSync(file, "utf8")).toBe("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-x\n");
-    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    // Windows has no POSIX modes; the file relies on the profile ACL there.
+    if (process.platform !== "win32") expect(fs.statSync(file).mode & 0o777).toBe(0o600);
   });
 
   test("removes a stale file when there is nothing to carry", () => {

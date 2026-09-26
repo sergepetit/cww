@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isUnderHostPath, isWindows, sameHostPath } from "./paths";
 
 export type SkillEntryPlan =
   | { action: "link"; path: string; target: string }
@@ -21,7 +22,7 @@ export function skillEntryPlan(entry: string, source: string, copy: boolean): Sk
   const entryStat = fs.lstatSync(entry, { throwIfNoEntry: false });
   if (entryStat) {
     try {
-      if (entryStat.isSymbolicLink() && fs.realpathSync(entry) === fs.realpathSync(source)) {
+      if (entryStat.isSymbolicLink() && sameHostPath(fs.realpathSync(entry), fs.realpathSync(source))) {
         return { action: "skip", path: entry, reason: "already-linked" };
       }
     } catch {
@@ -34,15 +35,19 @@ export function skillEntryPlan(entry: string, source: string, copy: boolean): Sk
 
 // Carry out a non-skip plan. Symlink targets are absolute (an entry can point
 // outside the tree it sits in), and copies dereference so a snapshot of a
-// linked skill is real files.
+// linked skill is real files. On Windows the link is a directory junction:
+// a real symlink there needs admin rights or Developer Mode, a junction
+// needs neither and reads back as a symlink.
 export function writeSkillEntry(plan: SkillEntryPlan): void {
   if (plan.action === "skip") return;
   fs.mkdirSync(path.dirname(plan.path), { recursive: true });
   if (plan.action === "copy") fs.cpSync(plan.source, plan.path, { recursive: true, dereference: true });
-  else fs.symlinkSync(plan.target, plan.path);
+  else fs.symlinkSync(plan.target, plan.path, isWindows() ? "junction" : undefined);
 }
 
 // ~-abbreviate a host path for display.
 export function tilde(p: string, home: string = os.homedir()): string {
-  return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+  if (!isUnderHostPath(p, home)) return p;
+  const rel = path.relative(home, p);
+  return rel ? `~${path.sep}${rel}` : "~";
 }

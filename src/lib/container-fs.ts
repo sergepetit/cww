@@ -50,7 +50,7 @@ export async function copyFromContainer(
   sources: string[],
   dest: string,
 ): Promise<string[]> {
-  const asDir = sources.length > 1 || dest.endsWith("/") || isHostDir(dest);
+  const asDir = sources.length > 1 || /[\\/]$/.test(dest) || isHostDir(dest);
   const copied: string[] = [];
   for (const src of sources) {
     const target = asDir ? path.join(dest, path.posix.basename(src)) : dest;

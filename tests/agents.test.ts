@@ -46,7 +46,7 @@ describe("validateAgent", () => {
     // validateAgent dies via process.exit, so probe it in a subprocess.
     const registry = path.join(import.meta.dir, "..", "src", "agents", "registry.ts");
     const r = Bun.spawnSync({
-      cmd: ["bun", "-e", `const { validateAgent } = await import(${JSON.stringify(registry)}); validateAgent("nope")`],
+      cmd: [process.execPath, "-e", `const { validateAgent } = await import(${JSON.stringify(registry)}); validateAgent("nope")`],
       stderr: "pipe",
     });
     expect(r.exitCode).toBe(1);
@@ -418,7 +418,7 @@ describe("opencode config file", () => {
     const agentMod = path.join(import.meta.dir, "..", "src", "agents", "opencode", "agent.ts");
     const r = Bun.spawnSync({
       cmd: [
-        "bun",
+        process.execPath,
         "-e",
         `const { opencodeContainerEnv } = await import(${JSON.stringify(agentMod)}); opencodeContainerEnv(${JSON.stringify(project)}, {}, ${JSON.stringify(home)})`,
       ],
@@ -534,12 +534,12 @@ describe("pi config file", () => {
     const agentMod = path.join(import.meta.dir, "..", "src", "agents", "pi", "agent.ts");
     const r = Bun.spawnSync({
       cmd: [
-        "bun",
+        process.execPath,
         "-e",
         `const { piAgent } = await import(${JSON.stringify(agentMod)}); piAgent.preflight(${JSON.stringify(project)}, {}, { id: "config-file" })`,
       ],
       stderr: "pipe",
-      env: { ...process.env, HOME: project }, // no real ~/.cww/pi-models.json in reach
+      env: { ...process.env, HOME: project, USERPROFILE: project }, // no real ~/.cww/pi-models.json in reach
     });
     expect(r.exitCode).toBe(1);
     const stderr = new TextDecoder().decode(r.stderr);
@@ -552,12 +552,12 @@ describe("pi config file", () => {
     const agentMod = path.join(import.meta.dir, "..", "src", "agents", "pi", "agent.ts");
     const r = Bun.spawnSync({
       cmd: [
-        "bun",
+        process.execPath,
         "-e",
         `const { piAgent } = await import(${JSON.stringify(agentMod)}); piAgent.preflight(${JSON.stringify(project)}, {}, { id: "anthropic-api-key" })`,
       ],
       stderr: "pipe",
-      env: { ...process.env, HOME: project },
+      env: { ...process.env, HOME: project, USERPROFILE: project },
     });
     expect(r.exitCode).toBe(1);
     const stderr = new TextDecoder().decode(r.stderr);
@@ -835,12 +835,12 @@ describe("copilot provider config", () => {
     const agentMod = path.join(import.meta.dir, "..", "src", "agents", "copilot", "agent.ts");
     const r = Bun.spawnSync({
       cmd: [
-        "bun",
+        process.execPath,
         "-e",
         `const { copilotAgent } = await import(${JSON.stringify(agentMod)}); copilotAgent.preflight(${JSON.stringify(p)}, {}, { id: "provider" })`,
       ],
       stderr: "pipe",
-      env: { ...process.env, HOME: p }, // no real ~/.cww/config.json in reach
+      env: { ...process.env, HOME: p, USERPROFILE: p }, // no real ~/.cww/config.json in reach
     });
     expect(r.exitCode).toBe(1);
     const stderr = new TextDecoder().decode(r.stderr);

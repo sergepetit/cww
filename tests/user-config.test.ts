@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   getProjectConfig,
   parseUserConfig,
+  projectKey,
   readUserConfig,
   setProjectConfig,
 } from "../src/lib/user-config";
@@ -54,7 +55,7 @@ describe("read/get/set round-trip", () => {
     setProjectConfig(repo, { repoUrl: "u1-rotated" }, file);
 
     expect(getProjectConfig(repo, file)).toEqual({ repoUrl: "u1-rotated", agent: "vibe" });
-    expect(readUserConfig(file).projects["/somewhere/else"]).toEqual({ repoUrl: "u2" });
+    expect(readUserConfig(file).projects[projectKey("/somewhere/else")]).toEqual({ repoUrl: "u2" });
   });
 
   test("keys by realpath, so a symlinked path hits the same entry", () => {

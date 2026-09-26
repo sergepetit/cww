@@ -49,3 +49,34 @@ export DOCKER_HOST=$(docker context inspect --format '{{.Endpoints.docker.Host}}
 `HOME=$S/home bun src/cli.ts teardown w1 -y`, then confirm with
 `docker ps -a | grep <project>`. The developer's own `cww-*` containers may be
 running — never touch containers you didn't create.
+
+## Windows
+
+Windows changes are verified on a real Windows box over ssh (so far a
+Windows 10 machine with Docker Desktop, `me@win-box` below). Its default ssh
+shell is cmd.exe, which mangles inline PowerShell, so pass scripts
+base64-encoded:
+
+```bash
+ps='cd $env:USERPROFILE\cww-dev; bun test'
+ssh me@win-box "powershell -NoProfile -EncodedCommand $(printf '%s' "$ps" | iconv -t UTF-16LE | base64)"
+```
+
+Wrap native commands in `cmd /c "... 2>&1"`: PowerShell 5.1 turns native
+stderr into CLIXML noise. Sync the working tree without committing (Windows
+ships bsdtar):
+
+```bash
+ssh me@win-box '(if exist cww-dev rmdir /s /q cww-dev) & mkdir cww-dev'
+git ls-files -co --exclude-standard -z | COPYFILE_DISABLE=1 tar czf - --null -T - \
+  | ssh me@win-box 'tar xzf - -C cww-dev'
+```
+
+- Isolation: `os.homedir()` reads `USERPROFILE` on Windows, not `HOME`, so a
+  fake home needs `$env:USERPROFILE` (and `$env:HOME`) pointed at it. On a
+  dedicated test box, using its real `~/.cww` is fine.
+- Non-TTY create: seed `%USERPROFILE%\.cww\config.json` with the repo's
+  `C:\...` path as key, set a repo-local git identity, and use a public repo
+  URL so the in-container clone succeeds.
+- Attach, shell, secret prompts and tab completion need a real console:
+  ask the developer to check those at the machine.

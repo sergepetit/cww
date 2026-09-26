@@ -19,7 +19,7 @@ import type { AgentAuthMethod } from "../agents/types";
 import { chooseAuthMethod, promptAuthMethod } from "../lib/auth-flow";
 import { loadEnvFile } from "../lib/env";
 import { getGitRoot, isGitRepo } from "../lib/git";
-import { resolveProjectPath } from "../lib/paths";
+import { isWindows, resolveProjectPath, sameHostPath } from "../lib/paths";
 import { setupRepo } from "../lib/setup";
 import { getProjectConfig, setProjectConfig } from "../lib/user-config";
 import { projectImagePlan } from "../lib/project-image";
@@ -95,7 +95,7 @@ export async function runInit(argv: string[]): Promise<void> {
   let projectPath = resolveProjectPath(positionals[0]);
   if (!(await isGitRepo(projectPath))) die(`Not a git repository: ${projectPath}`);
   const gitRoot = await getGitRoot(projectPath);
-  if (gitRoot && gitRoot !== projectPath) {
+  if (gitRoot && !sameHostPath(gitRoot, projectPath)) {
     info(`Using git root: ${gitRoot}`);
     projectPath = gitRoot;
   }
@@ -144,7 +144,10 @@ export async function runInit(argv: string[]): Promise<void> {
 
   const docker = await $`docker info`.quiet().nothrow();
   if (docker.exitCode === 0) ok("docker daemon reachable");
-  else ready = ko("docker daemon reachable", "start Docker (or check the docker context)");
+  else {
+    const hint = isWindows() ? "start Rancher Desktop or Docker Desktop" : "start Docker";
+    ready = ko("docker daemon reachable", `${hint} (or check the docker context)`);
+  }
 
   if (!method) {
     ready = ko(

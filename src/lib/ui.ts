@@ -38,9 +38,11 @@ export function confirm(question = "Continue?", def: "y" | "n" = "y"): boolean {
 
 // Hidden-input prompt for secrets: terminal echo is disabled around Bun's
 // prompt() so the value stays out of the scrollback. Without a TTY (piped
-// stdin) stty would fail, so input is read normally there.
+// stdin) stty would fail, so input is read normally there. Windows has no
+// stty; PowerShell's Read-Host -AsSecureString does the masked read instead.
 export function promptSecret(label: string): string {
   const tty = process.stdin.isTTY === true;
+  if (tty && process.platform === "win32") return promptSecretWindows(label);
   if (tty) Bun.spawnSync(["stty", "-echo"], { stdin: "inherit" });
   try {
     return (prompt(`${label}:`) ?? "").trim();
@@ -50,6 +52,21 @@ export function promptSecret(label: string): string {
       console.log(""); // the Enter keystroke was swallowed by -echo
     }
   }
+}
+
+// Read-Host draws its prompt on the console, so stdout carries only the value.
+function promptSecretWindows(label: string): string {
+  const script =
+    "$s = Read-Host -AsSecureString -Prompt $env:CWW_SECRET_LABEL; " +
+    "[Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))";
+  const r = Bun.spawnSync(["powershell.exe", "-NoProfile", "-Command", script], {
+    stdin: "inherit",
+    stdout: "pipe",
+    stderr: "inherit",
+    env: { ...process.env, CWW_SECRET_LABEL: label },
+  });
+  if (!r.success) die("Could not read the secret from the console.");
+  return r.stdout.toString().trim();
 }
 
 // Numbered-menu prompt. Returns the 1-based choice, or 0 on invalid input.

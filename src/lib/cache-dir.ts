@@ -14,6 +14,7 @@
 import { $ } from "bun";
 import fs from "node:fs";
 import { CWW_AGENTS } from "../agents/registry";
+import { isWindows } from "./paths";
 import { error } from "./ui";
 
 // Any locally-built cww image works for these helpers — the `developer` user
@@ -58,5 +59,8 @@ export async function provisionCacheDir(hostDir: string): Promise<boolean> {
   fs.mkdirSync(hostDir, { recursive: true });
   const r = await $`docker run --rm --user 0 --entrypoint chown -v ${hostDir}:/c ${image} -R ${ids} /c`
     .nothrow();
-  return r.exitCode === 0;
+  // A Windows folder mounted into the engine's Linux VM (Docker Desktop,
+  // Rancher Desktop) has no Linux owner to set; the container can write it
+  // regardless, so a refused chown there is no failure.
+  return r.exitCode === 0 || isWindows();
 }

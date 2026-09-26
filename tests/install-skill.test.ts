@@ -26,8 +26,8 @@ describe("installTargets", () => {
   test("routes to each agent's host skills dir", () => {
     const targets = installTargets(["claude", "opencode"], "/h");
     expect(targets).toEqual([
-      { agent: "claude", dir: "/h/.claude/skills", entry: "/h/.claude/skills/cww" },
-      { agent: "opencode", dir: "/h/.config/opencode/skills", entry: "/h/.config/opencode/skills/cww" },
+      { agent: "claude", dir: path.resolve("/h/.claude/skills"), entry: path.resolve("/h/.claude/skills/cww") },
+      { agent: "opencode", dir: path.resolve("/h/.config/opencode/skills"), entry: path.resolve("/h/.config/opencode/skills/cww") },
     ]);
   });
 
@@ -126,6 +126,14 @@ describe("the host skill in the install", () => {
     expect(loop![1]!.split(/\s+/)).toEqual([...BUILTIN_SKILL_REFERENCES]);
   });
 
+  test("install.ps1 stages the same reference docs", () => {
+    const install = fs.readFileSync(path.join(getCwwDir(), "install.ps1"), "utf8");
+    const list = install.match(/^\$HostSkillRefList = @\((.+)\)\r?$/m);
+    expect(list).not.toBeNull();
+    const docs = list![1]!.split(",").map((s) => s.trim().replace(/^'|'$/g, ""));
+    expect(docs).toEqual([...BUILTIN_SKILL_REFERENCES]);
+  });
+
   test("every doc it references exists in docs/", () => {
     for (const name of BUILTIN_SKILL_REFERENCES) {
       expect(fs.existsSync(path.join(getCwwDir(), "docs", name))).toBe(true);
@@ -135,7 +143,7 @@ describe("the host skill in the install", () => {
 
 describe("tilde", () => {
   test("abbreviates paths under the given home and leaves others alone", () => {
-    expect(tilde("/h/.claude/skills/cww", "/h")).toBe("~/.claude/skills/cww");
+    expect(tilde("/h/.claude/skills/cww", "/h")).toBe(path.join("~", ".claude", "skills", "cww"));
     expect(tilde("/opt/elsewhere", "/h")).toBe("/opt/elsewhere");
   });
 });

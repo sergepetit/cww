@@ -243,7 +243,7 @@ export function builtinSkillPlan(
     references,
     missingReferences,
     troubleshooting: troubleshootingDoc(agent),
-    dest: path.join(skillsDir, "cww"),
+    dest: path.posix.join(skillsDir, "cww"), // in-container path
   };
 }
 
